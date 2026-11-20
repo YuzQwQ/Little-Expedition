@@ -17,7 +17,9 @@ import {
     hasFutureShop, isSupplyStop, unownedRelics, waveSpec,
     type EventCard, type EventReward,
 } from '../expedition';
+import { MobileControls } from '../mobileControls';
 import { RunRelics } from '../relics';
+import { getSettings, usesMobileControls } from '../settings';
 import { closestStatusTargets, spreadPoison, type StatusKind } from '../statuses';
 import { BattleView, sector } from '../view';
 import { WarriorBlock, WarriorResolve } from '../warrior';
@@ -105,6 +107,8 @@ export class BattleScene extends Phaser.Scene {
     private relics: RunRelics;
     private economy: RunEconomy;
     private keys: Keys;
+    private mobile?: MobileControls;
+    private touchUltimateAiming: boolean;
     private mode: Mode;
     private clock: number;
     private wave: number;
@@ -151,6 +155,7 @@ export class BattleScene extends Phaser.Scene {
         this.swing = undefined;
         this.dodge = undefined;
         this.ultimate = undefined;
+        this.touchUltimateAiming = false;
         this.attackPressed = false;
         this.dodgePressed = false;
         this.ultimatePressed = false;
@@ -170,7 +175,11 @@ export class BattleScene extends Phaser.Scene {
         this.relics = new RunRelics();
         this.economy = new RunEconomy();
 
-        this.view = new BattleView(this);
+        const settings = getSettings();
+        this.mobile = usesMobileControls(settings.controls)
+            ? new MobileControls(this.game.canvas.parentElement!, () => { this.dodgePressed = true; }, () => { this.pausePressed = true; })
+            : undefined;
+        this.view = new BattleView(this, !!this.mobile);
         this.physics.world.setBounds(0, 0, FIELD.width, FIELD.height);
         this.player = this.view.createWarrior({ x: FIELD.width / 2, y: FIELD.height / 2 });
         this.enemyGroup = this.physics.add.group();
@@ -180,7 +189,7 @@ export class BattleScene extends Phaser.Scene {
         this.physics.add.collider(this.player, this.enemyGroup, undefined,
             (_, sprite) => (!this.dodge || !this.relics.held.has('horn'))
                 && !this.enemies.some(enemy => enemy.sprite === sprite && enemy.special?.active?.stage === 'charge'));
-        this.cameras.main.setBounds(0, 0, FIELD.width, FIELD.height)
+        this.cameras.main.setBounds(0, 0, FIELD.width, FIELD.height).setZoom(settings.zoom)
             .startFollow(this.player, true, 0.16, 0.16);
 
         this.input.mouse?.disableContextMenu();
@@ -188,9 +197,9 @@ export class BattleScene extends Phaser.Scene {
         const keyboard = this.input.keyboard!;
         this.keys = keyboard.addKeys({ up: W, left: A, down: S, right: D }) as Keys;
         keyboard.addCapture([SPACE, Q, ESC, F3]);
-        const dodge = (event: KeyboardEvent) => { if (!event.repeat) this.dodgePressed = true; };
+        const dodge = (event: KeyboardEvent) => { if (!this.mobile && !event.repeat) this.dodgePressed = true; };
         const ultimate = (event: KeyboardEvent) => {
-            if (!event.repeat && this.mode === 'fighting') this.ultimatePressed = true;
+            if (!this.mobile && !event.repeat && this.mode === 'fighting') this.ultimatePressed = true;
         };
         const pause = (event: KeyboardEvent) => { if (!event.repeat) this.pausePressed = true; };
         const debug = (event: KeyboardEvent) => { if (!event.repeat) this.debug = !this.debug; };
@@ -200,6 +209,7 @@ export class BattleScene extends Phaser.Scene {
         keyboard.on('keydown-F3', debug);
         this.input.on('pointerdown', this.onPointerDown, this);
         this.game.events.on(Phaser.Core.Events.BLUR, this.onBlur, this);
+        this.scale.on(Phaser.Scale.Events.RESIZE, this.cancelTouchInput, this);
         this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.draw, this);
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
             this.enemyProjectiles.length = 0;
@@ -210,12 +220,15 @@ export class BattleScene extends Phaser.Scene {
             keyboard.off('keydown-F3', debug);
             this.input.off('pointerdown', this.onPointerDown, this);
             this.game.events.off(Phaser.Core.Events.BLUR, this.onBlur, this);
+            this.scale.off(Phaser.Scale.Events.RESIZE, this.cancelTouchInput, this);
+            this.mobile?.destroy();
             this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.draw, this);
         });
 
         if (this.testEnemy) {
             this.wave = 0;
             this.spawnWave();
+            this.mobile?.setActive(true);
         } else {
             this.offerOpening();
         }
@@ -223,7 +236,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private onPointerDown(pointer: Phaser.Input.Pointer) {
-        if (this.mode === 'fighting' && pointer.button === 0 && !this.ignorePointerUntilUp) {
+        if (!this.mobile && this.mode === 'fighting' && pointer.button === 0 && !this.ignorePointerUntilUp) {
             this.attackPressed = true;
         }
     }
@@ -234,8 +247,14 @@ export class BattleScene extends Phaser.Scene {
         this.ultimatePressed = false;
         this.pausePressed = false;
         this.ignorePointerUntilUp = true;
+        this.cancelTouchInput();
         this.block.update(false, false, this.aim, this.clock);
         this.input.keyboard?.resetKeys();
+    }
+
+    private cancelTouchInput() {
+        this.mobile?.reset();
+        this.touchUltimateAiming = false;
     }
 
     private spawnWave() {
@@ -285,18 +304,19 @@ export class BattleScene extends Phaser.Scene {
         const pointer = this.input.activePointer;
         if (pointer.noButtonDown()) this.ignorePointerUntilUp = false;
         const at = this.player.body!.center;
-        const target = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-        this.aim = direction(at, target, this.aim);
+        const touch = this.mobile?.input.frame(this.aim);
+        this.touchUltimateAiming = touch?.aimingUltimate ?? false;
+        this.aim = touch?.heading ?? direction(at, this.cameras.main.getWorldPoint(pointer.x, pointer.y), this.aim);
 
-        const movement = new Phaser.Math.Vector2(
+        const movement = touch?.movement ?? new Phaser.Math.Vector2(
             Number(this.keys.right.isDown) - Number(this.keys.left.isDown),
             Number(this.keys.down.isDown) - Number(this.keys.up.isDown),
         ).normalize();
 
+        const castHeading = touch?.castHeading ?? (ultimatePressed ? this.aim : undefined);
         this.updateUltimate(at);
-        this.updateDodge(movement, dodgePressed && !this.ultimate);
-        const attackHeld = !this.ignorePointerUntilUp && pointer.leftButtonDown();
-        const attackRequested = this.attackPressed || attackHeld;
+        this.updateDodge(movement, dodgePressed && !this.ultimate && !this.touchUltimateAiming && touch?.castHeading === undefined);
+        const attackRequested = touch?.attack ?? (this.attackPressed || (!this.ignorePointerUntilUp && pointer.leftButtonDown()));
         this.attackPressed = false;
 
         // Resolve a late frame crossing the end of the active window before discarding the swing.
@@ -308,11 +328,11 @@ export class BattleScene extends Phaser.Scene {
         this.updateBlades(step / 1000);
         this.updateTimedRelics();
 
-        if (ultimatePressed && !this.dodge && !this.ultimate) this.beginUltimate();
-        const canAct = !this.dodge && !this.swing && !this.ultimate;
-        const guardHeld = !this.ignorePointerUntilUp && pointer.rightButtonDown();
+        if (castHeading !== undefined && !this.dodge && !this.ultimate) this.beginUltimate(castHeading);
+        const canAct = !this.dodge && !this.swing && !this.ultimate && !this.touchUltimateAiming;
+        const guardHeld = touch?.guard ?? (!this.ignorePointerUntilUp && pointer.rightButtonDown());
         this.block.update(guardHeld, canAct, this.aim, previous);
-        if (this.block.active) {
+        if (this.block.active || (this.touchUltimateAiming && !this.ultimate)) {
             this.faceHeading(this.aim);
         } else if (canAct && attackRequested && this.clock >= this.nextAttack) {
             this.beginSwing();
@@ -533,14 +553,14 @@ export class BattleScene extends Phaser.Scene {
         if (this.swing.skipWindup) this.swingAt(this.player.body!.center, this.swing);
     }
 
-    private beginUltimate() {
+    private beginUltimate(heading: number) {
         if (!this.resolve.ready) return;
         if (this.swing) this.settleSwing(this.swing);
         this.swing = undefined;
         this.resolve.spend();
-        this.ultimate = { started: this.clock, heading: this.aim, released: false };
+        this.ultimate = { started: this.clock, heading, released: false };
         this.vital.knockUntil = 0;
-        this.faceHeading(this.aim);
+        this.faceHeading(heading);
     }
 
     private updateUltimate(at: Point) {
@@ -1005,7 +1025,10 @@ export class BattleScene extends Phaser.Scene {
     private stopBattle(mode: Mode) {
         this.mode = mode;
         this.attackPressed = false;
+        this.dodgePressed = false;
         this.ultimatePressed = false;
+        this.touchUltimateAiming = false;
+        this.mobile?.setActive(false);
         this.block.update(false, false, this.aim, this.clock);
         this.physics.pause();
         this.cameras.main.setLerp(0, 0);
@@ -1018,6 +1041,7 @@ export class BattleScene extends Phaser.Scene {
         this.view.hideOverlay();
         this.view.freeze(false);
         this.physics.resume();
+        this.mobile?.setActive(true);
         this.cameras.main.setLerp(0.16, 0.16);
     }
 
@@ -1286,7 +1310,7 @@ export class BattleScene extends Phaser.Scene {
             view.drawEcho(echo.origin, RELICS.cloak.range, 1 - (echo.due - time) / RELICS.cloak.delay);
         }
 
-        if (this.mode === 'fighting' && pointer.x >= 0 && pointer.x < VIEW.width
+        if (!this.mobile && this.mode === 'fighting' && pointer.x >= 0 && pointer.x < VIEW.width
             && pointer.y >= 0 && pointer.y < VIEW.height) {
             cues.lineStyle(1, 0xf0dcb4, 0.65).strokeCircle(aimPoint.x, aimPoint.y, 6);
             cues.fillStyle(0xf0dcb4, 0.8).fillCircle(aimPoint.x, aimPoint.y, 1.5);
@@ -1306,6 +1330,10 @@ export class BattleScene extends Phaser.Scene {
             const spec = WARRIOR.ultimate;
             const progress = (time - ultimate.started) / spec.windup;
             sector(cues, player, ultimate.heading, WARRIOR.attack.range * spec.range, spec.angle, 0xffca82, 0.10 + progress * 0.21);
+        }
+        if (this.touchUltimateAiming && !ultimate) {
+            const spec = WARRIOR.ultimate;
+            sector(cues, player, this.aim, WARRIOR.attack.range * spec.range, spec.angle, 0xffca82, 0.23);
         }
 
         const hitFlash = time < this.vital.flashUntil;
@@ -1371,6 +1399,7 @@ export class BattleScene extends Phaser.Scene {
             this.dodgeWork / rate, this.relics.dodgeCooldown / rate, buffs.join('   ·   '), activeShield(this.vital, time),
             featured, this.relics.blessing);
         view.updateResolve(this.resolve.amount, ultimate !== undefined);
+        this.mobile?.setStatus(this.dodgeWork, perfectReady, this.resolve.ready && !this.dodge && !ultimate);
         const relics = this.relics;
         const astrolabeFlash = relics.astrolabeFlashing(time);
         const arcane = [

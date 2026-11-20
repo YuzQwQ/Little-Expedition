@@ -13,9 +13,69 @@ import { RunRelics } from '../src/game/relics.ts';
 import { calculateStatusChance, closestStatusTargets, EnemyStatuses, spreadPoison } from '../src/game/statuses.ts';
 import { REFRESH_COST, RunEconomy, blessingChoices, eventCardsAfter, hasFutureShop, isSupplyStop, killGold, takeRelic, waveSpec } from '../src/game/expedition.ts';
 import { WarriorBlock, WarriorResolve } from '../src/game/warrior.ts';
+import { MobileInput, stickVector } from '../src/game/mobileControls.ts';
+import { normalizeSettings, usesMobileControls } from '../src/game/settings.ts';
 
 const origin = { x: 0, y: 0 };
 const right = { x: 60, y: 0 };
+
+test('screen preferences validate stored modes and zoom, and auto mode uses the primary pointer', () => {
+    assert.deepEqual(normalizeSettings({ controls: 'invalid', zoom: 10 }), { controls: 'auto', zoom: 1 });
+    assert.deepEqual(normalizeSettings({ controls: 'mobile', zoom: 1.4 }), { controls: 'mobile', zoom: 1.4 });
+    assert.equal(usesMobileControls('auto', true), true);
+    assert.equal(usesMobileControls('auto', false), false);
+    assert.equal(usesMobileControls('desktop', true), false);
+    assert.equal(usesMobileControls('mobile', false), true);
+});
+
+test('independent touch pointers move and attack at once, and a brief attack tap is retained', () => {
+    const touch = new MobileInput();
+    assert.deepEqual(stickVector(2, 2, 40), { x: 0, y: 0 });
+    assert.equal(touch.begin('move', 1), true);
+    assert.equal(touch.begin('attack', 1), false);
+    touch.move('move', 1, 50, 50, 40);
+    touch.begin('attack', 2);
+    touch.move('attack', 2, 0, -50, 40);
+    const frame = touch.frame(0);
+    assert.ok(Math.abs(Math.hypot(frame.movement.x, frame.movement.y) - 1) < 1e-9);
+    assert.equal(frame.attack, true);
+    assert.equal(frame.heading, -Math.PI / 2);
+    assert.equal(touch.frame(0).attack, true);
+    touch.end('attack', 2);
+    touch.begin('attack', 3);
+    touch.move('attack', 3, -40, 0, 40);
+    touch.end('attack', 3);
+    const tap = touch.frame(0);
+    assert.equal(tap.heading, Math.PI);
+    assert.equal(tap.attack, true);
+    assert.equal(touch.frame(0).attack, false);
+    assert.ok(touch.frame(0).movement.x > 0);
+});
+
+test('held guard follows the drag and ultimate aiming releases once or safely cancels', () => {
+    const touch = new MobileInput();
+    touch.begin('guard', 1);
+    touch.move('guard', 1, 0, 50, 40);
+    assert.equal(touch.frame(0).guard, true);
+    assert.equal(touch.frame(0).heading, Math.PI / 2);
+    touch.move('guard', 1, -50, 0, 40);
+    assert.equal(touch.frame(0).heading, Math.PI);
+    touch.begin('ultimate', 2);
+    touch.move('ultimate', 2, 0, -50, 40);
+    touch.move('ultimate', 2, 0, 0, 40);
+    const aimed = touch.frame(0);
+    assert.equal(aimed.aimingUltimate, true);
+    assert.equal(aimed.heading, -Math.PI / 2);
+    assert.equal(aimed.castHeading, undefined);
+    touch.end('ultimate', 2);
+    assert.equal(touch.frame(0).castHeading, -Math.PI / 2);
+    assert.equal(touch.frame(0).castHeading, undefined);
+    touch.begin('ultimate', 3);
+    touch.end('ultimate', 3, true);
+    assert.equal(touch.frame(0).castHeading, undefined);
+    touch.reset();
+    assert.equal(touch.frame(0).guard, false);
+});
 
 test('the active window survives late frames and the sector respects direction and range', () => {
     const swing = { heading: 0, started: 0, speed: 1.2, damageScale: 1, hit: new Set() };

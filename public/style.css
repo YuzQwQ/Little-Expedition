@@ -9,6 +9,7 @@ html, body {
     position: relative;
     width: 100%;
     height: 100%;
+    height: 100dvh;
     overflow: hidden;
 }
 
@@ -16,4 +17,136 @@ canvas {
     display: block;
     touch-action: none;
     user-select: none;
+}
+
+.game-settings-button,
+.game-settings,
+.mobile-controls {
+    font-family: "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+}
+
+.game-settings-button,
+.game-settings button {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid #9c8968;
+    border-radius: 8px;
+    background: #253a3c;
+    color: #f7dfb1;
+    font: inherit;
+    cursor: pointer;
+}
+
+.game-settings-button {
+    position: absolute;
+    z-index: 2;
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+}
+
+.game-settings {
+    width: min(340px, calc(100vw - 32px));
+    box-sizing: border-box;
+    padding: 22px;
+    border: 1px solid #697a70;
+    border-radius: 12px;
+    color: #f8eedb;
+    background: #1b3036;
+}
+
+.game-settings::backdrop { background: #0b151bd9; }
+.game-settings h2 { margin: 0 0 14px; }
+.game-settings label { display: grid; gap: 6px; margin-bottom: 14px; }
+.game-settings form { display: flex; justify-content: flex-end; }
+
+.game-settings select {
+    min-height: 44px;
+    padding: 0 10px;
+    border: 1px solid #697a70;
+    border-radius: 6px;
+    color: inherit;
+    background: #122025;
+    font: inherit;
+}
+
+.mobile-controls {
+    --button-size: clamp(48px, 13vmin, 68px);
+    --stick-size: clamp(80px, 25vmin, 144px);
+    --left: max(10px, env(safe-area-inset-left));
+    --right: max(10px, env(safe-area-inset-right));
+    --bottom: max(10px, env(safe-area-inset-bottom));
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    pointer-events: none;
+    user-select: none;
+}
+
+.mobile-controls button {
+    box-sizing: border-box;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #a3b4a7a6;
+    border-radius: 50%;
+    color: #f8eedb;
+    background: #182b31d9;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.03em;
+    pointer-events: auto;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-controls button.held,
+.mobile-controls button:active { background: #375452ef; }
+.mobile-controls button[aria-disabled="true"] { opacity: 0.47; }
+.mobile-guard.ready { border-color: #9ffce5; }
+.mobile-ultimate[aria-disabled="false"] { border-color: #f7cb80; color: #ffe3a6; }
+
+.mobile-stick {
+    position: absolute;
+    width: var(--stick-size);
+    height: var(--stick-size);
+    bottom: var(--bottom);
+}
+
+.mobile-stick::after {
+    content: '';
+    position: absolute;
+    width: 44%;
+    height: 44%;
+    border: 1px solid #c9d3b985;
+    border-radius: 50%;
+    background: #d9e3c122;
+    transform: translate(var(--stick-x, 0), var(--stick-y, 0));
+    pointer-events: none;
+}
+
+.mobile-move { left: var(--left); }
+.mobile-attack { right: calc(var(--right) + var(--button-size) + 12px); }
+
+.mobile-actions {
+    position: absolute;
+    right: var(--right);
+    bottom: var(--bottom);
+    display: grid;
+    gap: 8px;
+}
+
+.mobile-button {
+    width: var(--button-size);
+    height: var(--button-size);
+}
+
+.mobile-controls .mobile-pause {
+    position: absolute;
+    left: var(--left);
+    top: max(10px, env(safe-area-inset-top));
+    width: 48px;
+    height: 44px;
+    border-radius: 10px;
 }

@@ -5,6 +5,7 @@ import { ENEMIES, RELICS, VIEW, WAVES, type RelicId } from '../config';
 import { SPECIAL_PATTERNS, isSpecialEnemy, type SpecialEnemyKind } from '../enemyPatterns';
 import { DIFFICULTIES, isTrialUnlocked, type Difficulty } from '../difficulty';
 import type { EventReward } from '../expedition';
+import { getSettings, showSettingsButton, usesMobileControls } from '../settings';
 import { ensureTextures } from '../view';
 
 export interface RunResult {
@@ -83,12 +84,25 @@ export class MainMenuScene extends Phaser.Scene {
             ['右键', '坚守反击'], ['Space', '闪避'], ['Q', '王庭断章'], ['Esc', '暂停'],
         ];
         label(this, 110, 439, '操作说明', 17, COLORS.gold).setFontStyle('bold');
+        const keyboardHints = this.add.container();
         controls.forEach(([key, action], index) => {
             const col = index % 2;
             const row = Math.floor(index / 2);
-            label(this, 110 + col * 206, 481 + row * 39, key, 17).setFontStyle('bold');
-            label(this, 184 + col * 206, 481 + row * 39, action, 17, COLORS.muted);
+            keyboardHints.add([
+                label(this, 110 + col * 206, 481 + row * 39, key, 17).setFontStyle('bold'),
+                label(this, 184 + col * 206, 481 + row * 39, action, 17, COLORS.muted),
+            ]);
         });
+        const touchHints = label(this, 110, 480, '左摇杆移动，右摇杆瞄准并攻击\n按住格挡后拖动可转向\n按住大招瞄准，松开释放',
+            21, COLORS.muted).setLineSpacing(13);
+        const updateHints = () => {
+            const mobile = usesMobileControls(getSettings().controls);
+            keyboardHints.setVisible(!mobile);
+            touchHints.setVisible(mobile);
+        };
+        const closeSettings = showSettingsButton(this.game.canvas.parentElement!, updateHints);
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, closeSettings);
+        updateHints();
     }
 }
 

@@ -177,6 +177,8 @@ export class BattleView {
     private readonly arcaneCharge: Phaser.GameObjects.Text;
     private readonly dodge: Phaser.GameObjects.Text;
     private readonly resolve: Phaser.GameObjects.Text;
+    private readonly healthOffset: number;
+    private readonly statusX: number;
     private readonly debug: Phaser.GameObjects.Text;
     private overlay?: Phaser.GameObjects.Container;
     private banner?: Phaser.GameObjects.Container;
@@ -184,7 +186,7 @@ export class BattleView {
     private warriorMotion?: Motion;
     private warriorMotionStarted = 0;
 
-    constructor(private readonly scene: Phaser.Scene) {
+    constructor(private readonly scene: Phaser.Scene, private readonly mobile = false) {
         ensureTextures(scene);
         this.world = scene.add.layer();
         this.hud = scene.add.layer();
@@ -218,32 +220,36 @@ export class BattleView {
         }).setDepth(13);
         this.world.add([this.cues, this.particles, this.debugGraphics]);
 
-        const healthPanel = panel(scene, 24, 22, 282, 115, 0x182b31).setAlpha(0.96);
+        this.healthOffset = mobile ? 94 : 0;
+        this.statusX = mobile ? (VIEW.width - 228) / 2 : 24;
+        const healthOffset = this.healthOffset;
+        const statusX = this.statusX;
+        const healthPanel = panel(scene, 24, 22 + healthOffset, 282, 115, 0x182b31).setAlpha(0.96);
         const wavePanel = panel(scene, 501, 24, 278, 61, 0x182b31).setAlpha(0.96);
         const goldPanel = panel(scene, 568, 91, 144, 35, 0x182b31, 0x746550).setAlpha(0.96);
         const relicPanel = panel(scene, 943, 22, 313, 150, 0x182b31).setAlpha(0.96);
-        const statusPanel = panel(scene, 24, 586, 228, 106, 0x182b31).setAlpha(0.96);
+        const statusPanel = panel(scene, statusX, 586, 228, 106, 0x182b31).setAlpha(0.96);
         this.meter = scene.add.graphics();
-        this.hp = label(scene, 43, 54, '', 29).setFontStyle('bold');
-        this.shield = label(scene, 283, 83, '', 15, COLORS.gold).setOrigin(1, 0);
+        this.hp = label(scene, 43, 54 + healthOffset, '', 29).setFontStyle('bold');
+        this.shield = label(scene, 283, 83 + healthOffset, '', 15, COLORS.gold).setOrigin(1, 0);
         this.wave = label(scene, 640, 54, '', 21).setOrigin(0.5).setFontStyle('bold');
         this.gold = label(scene, 640, 108, '', 18, COLORS.gold).setOrigin(0.5).setFontStyle('bold');
         this.heldTitle = label(scene, 962, 36, '', 15, COLORS.gold);
         this.blessing = label(scene, 1237, 182, '', 15).setOrigin(1, 0);
         this.held = [962, 1103].map(x => label(scene, x, 63, '', 14).setLineSpacing(1));
-        this.dodge = label(scene, 44, 639, '', 16, COLORS.muted).setFontStyle('bold');
-        this.resolve = label(scene, 44, 597, '', 16, COLORS.gold).setFontStyle('bold');
-        this.charge = label(scene, 44, 146, '', 17, COLORS.gold);
-        this.arcaneCharge = label(scene, 44, 173, '', 16, '#d6b0fc');
+        this.dodge = label(scene, statusX + 20, 639, '', 16, COLORS.muted).setFontStyle('bold');
+        this.resolve = label(scene, statusX + 20, 597, '', 16, COLORS.gold).setFontStyle('bold');
+        this.charge = label(scene, 44, 146 + healthOffset, '', 17, COLORS.gold);
+        this.arcaneCharge = label(scene, 44, 173 + healthOffset, '', 16, '#d6b0fc');
         this.debug = label(scene, 20, 205, '', 15, COLORS.mint).setBackgroundColor('#102329').setVisible(false);
         this.hud.add([
             healthPanel, wavePanel, goldPanel, relicPanel, statusPanel,
-            label(scene, 44, 33, '战士  /  生命', 15, COLORS.muted),
+            label(scene, 44, 33 + healthOffset, '战士  /  生命', 15, COLORS.muted),
             this.heldTitle, this.blessing,
-            label(scene, 1250, 675, 'Esc  暂停', 15, COLORS.muted).setOrigin(1, 0),
             this.hp, this.shield, this.wave, this.gold, ...this.held, this.dodge, this.resolve, this.charge, this.arcaneCharge,
             this.meter, this.debug,
         ]);
+        if (!mobile) this.hud.add(label(scene, 1250, 675, 'Esc  暂停', 15, COLORS.muted).setOrigin(1, 0));
     }
 
     private drawFloor() {
@@ -562,12 +568,15 @@ export class BattleView {
         this.held[0].setText(held.filter((_, index) => index % 2 === 0).join('\n') || '暂无遗物');
         this.held[1].setText(held.filter((_, index) => index % 2 === 1).join('\n'));
         this.charge.setText(buffs);
-        this.dodge.setText(dodge > 0 ? `Space  闪避 · ${dodge.toFixed(1)} 秒` : 'Space  闪避就绪');
-        this.meter.clear().fillStyle(0x34494a).fillRoundedRect(45, 106, 239, 8, 4);
+        const shortcut = this.mobile ? '' : 'Space  ';
+        this.dodge.setText(shortcut + (dodge > 0 ? `闪避 · ${dodge.toFixed(1)} 秒` : '闪避就绪'));
+        const hpBarY = 106 + this.healthOffset;
+        const statusBarX = this.statusX + 20;
+        this.meter.clear().fillStyle(0x34494a).fillRoundedRect(45, hpBarY, 239, 8, 4);
         const hpWidth = 239 * player.hp / player.maxHp;
-        if (hpWidth > 0) this.meter.fillStyle(0xd79179).fillRoundedRect(45, 106, hpWidth, 8, Math.min(4, hpWidth / 2));
-        this.meter.fillStyle(0x34494a).fillRect(44, 672, 186, 5);
-        this.meter.fillStyle(0x9cc4aa).fillRect(44, 672, 186 * (1 - dodge / dodgeCooldown), 5);
+        if (hpWidth > 0) this.meter.fillStyle(0xd79179).fillRoundedRect(45, hpBarY, hpWidth, 8, Math.min(4, hpWidth / 2));
+        this.meter.fillStyle(0x34494a).fillRect(statusBarX, 672, 186, 5);
+        this.meter.fillStyle(0x9cc4aa).fillRect(statusBarX, 672, 186 * (1 - dodge / dodgeCooldown), 5);
     }
 
     updateDebug(enabled: boolean, time: number, state: string, details: string) {
@@ -583,10 +592,11 @@ export class BattleView {
 
     updateResolve(amount: number, casting: boolean) {
         const ready = amount === WARRIOR.resolve.max;
-        this.resolve.setText(casting ? 'Q  王庭断章 · 施放中' : ready ? 'Q  王庭断章 · 就绪' : `Q  战意  ${amount} / ${WARRIOR.resolve.max}`);
+        const shortcut = this.mobile ? '' : 'Q  ';
+        this.resolve.setText(shortcut + (casting ? '王庭断章 · 施放中' : ready ? '王庭断章 · 就绪' : `战意  ${amount} / ${WARRIOR.resolve.max}`));
         this.resolve.setColor(ready ? '#ffe4a4' : COLORS.gold);
-        this.meter.fillStyle(0x34494a).fillRect(44, 626, 186, 5);
-        this.meter.fillStyle(ready ? 0xffe4a4 : 0xe3ac65).fillRect(44, 626, 186 * amount / WARRIOR.resolve.max, 5);
+        this.meter.fillStyle(0x34494a).fillRect(this.statusX + 20, 626, 186, 5);
+        this.meter.fillStyle(ready ? 0xffe4a4 : 0xe3ac65).fillRect(this.statusX + 20, 626, 186 * amount / WARRIOR.resolve.max, 5);
     }
 
     waveBanner(wave: number, challenge: boolean, featured?: string) {
