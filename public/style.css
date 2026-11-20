@@ -1,15 +1,19 @@
-body {
+html, body {
     margin: 0;
-    padding: 0;
-    color: rgba(255, 255, 255, 0.87);
-    background-color: #0f0f0f;
+    width: 100%;
+    height: 100%;
+    background: #0b1317;
 }
 
-#app {
+#game-container {
+    position: relative;
     width: 100%;
-    height: 100vh;
+    height: 100%;
     overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+}
+
+canvas {
+    display: block;
+    touch-action: none;
+    user-select: none;
 }

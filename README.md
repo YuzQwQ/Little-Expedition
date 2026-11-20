@@ -1,158 +1,121 @@
-# Phaser Vite TypeScript Template
+# 小小远征 · V0.4
 
-This is a Phaser project template that uses Vite for bundling. It supports hot-reloading for quick development workflow, includes TypeScript support and scripts to generate production-ready builds.
+Phaser 4.2.1、TypeScript 和 Vite 实现的桌面浏览器动作肉鸽原型。战士可以通过完美格挡积累战意，在满能量时施放「王庭断章」。单局有 20 波战斗，包含整备商店、随机遭遇、派系祝福与 66 件遗物，最后迎战遗迹石像守卫。
 
-**[This Template is also available as a JavaScript version.](https://github.com/phaserjs/template-vite)**
+## 运行
 
-### Versions
+Windows 下双击 [start-game.cmd](start-game.cmd) 即可启动并打开游戏。首次启动会在缺少依赖时自动安装。关闭启动窗口即可停止本地服务。
 
-This template has been updated for:
+使用 Node.js 24 和 pnpm 11。
 
-- [Phaser 4](https://github.com/phaserjs/phaser)
-- [Vite 6.3.1](https://github.com/vitejs/vite)
-- [TypeScript 5.7.2](https://github.com/microsoft/TypeScript)
-
-![screenshot](screenshot.png)
-
-## Requirements
-
-[Node.js](https://nodejs.org) is required to install dependencies and run scripts via `npm`.
-
-## Available Commands
-
-| Command | Description |
-|---------|-------------|
-| `npm install` | Install project dependencies |
-| `npm run dev` | Launch a development web server |
-| `npm run build` | Create a production build in the `dist` folder |
-| `npm run dev-nolog` | Launch a development web server without sending anonymous data (see "About log.js" below) |
-| `npm run build-nolog` | Create a production build in the `dist` folder without sending anonymous data (see "About log.js" below) |
-
-## Writing Code
-
-After cloning the repo, run `npm install` from your project directory. Then, you can start the local development server by running `npm run dev`.
-
-The local development server runs on `http://localhost:8080` by default. Please see the Vite documentation if you wish to change this, or add SSL support.
-
-Once the server is running you can edit any of the files in the `src` folder. Vite will automatically recompile your code and then reload the browser.
-
-## Template Project Structure
-
-We have provided a default project structure to get you started. This is as follows:
-
-## Template Project Structure
-
-We have provided a default project structure to get you started:
-
-| Path                         | Description                                                |
-|------------------------------|------------------------------------------------------------|
-| `index.html`                 | A basic HTML page to contain the game.                     |
-| `public/assets`              | Game sprites, audio, etc. Served directly at runtime.      |
-| `public/style.css`           | Global layout styles.                                      |
-| `src/main.ts`                | Application bootstrap.                                     |
-| `src/game`                   | Folder containing the game code.                           |
-| `src/game/main.ts`           | Game entry point: configures and starts the game.          |
-| `src/game/scenes`            | Folder with all Phaser game scenes.                        | 
-
-
-## Handling Assets
-
-Vite supports loading assets via JavaScript module `import` statements.
-
-This template provides support for both embedding assets and also loading them from a static folder. To embed an asset, you can import it at the top of the JavaScript file you are using it in:
-
-```js
-import logoImg from './assets/logo.png'
+```sh
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-To load static files such as audio files, videos, etc place them into the `public/assets` folder. Then you can use this path in the Loader calls within Phaser:
+开发地址默认为 `http://localhost:8080`。开战前可从三件随机遗物中选一件，或领取 150 金币。胜利和失败都可从结算页重开。
 
-```js
-preload ()
-{
-    //  This is an example of an imported bundled image.
-    //  Remember to import it at the top of this file
-    this.load.image('logo', logoImg);
+访问 `/?debug=enemies` 可进入敌人调试场，分别生成骷髅术士、野猪、哥布林狂徒或遗迹石像守卫。调试战使用基础属性，结算页提供重测和返回调试场。
 
-    //  This is an example of loading a static image
-    //  from the public/assets folder:
-    this.load.image('background', 'assets/bg.png');
-}
+```sh
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm preview
 ```
 
-When you issue the `npm run build` command, all static assets are automatically copied to the `dist/assets` folder.
+生产预览地址默认为 `http://localhost:4173`，静态构建产物位于 `dist/`。
 
-## Deploying to Production
+| 操作 | 按键 |
+| --- | --- |
+| 八方向移动 | WASD |
+| 瞄准 | 鼠标移动 |
+| 挥剑 / 连续挥剑 | 左键单击 / 按住 |
+| 坚守反击 | 按住右键朝向攻击，及时起手可完美格挡 |
+| 闪避 | Space |
+| 王庭断章 | Q，消耗 100 战意 |
+| 暂停 / 继续 | Esc |
+| 物理范围、帧率与状态调试 | F3 |
 
-After you run the `npm run build` command, your code will be built into a single bundle and saved to the `dist` folder, along with any other assets your project imported, or stored in the public assets folder.
+首次通关普通后，主菜单解锁磨砺难度。记录保存在当前浏览器。普通的敌人生命、伤害和弹幕速度分别为磨砺的 90%、80% 和 90%，再结合实际波次和战斗事件结算。
 
-In order to deploy your game, you will need to upload *all* of the contents of the `dist` folder to a public facing web server.
+## 关键模块
 
-## Customizing the Template
+| 模块 | 职责 |
+| --- | --- |
+| `src/game/main.ts` | Phaser 启动、缩放、场景注册和 Arcade Physics 配置 |
+| `src/game/scenes/` | 主菜单、战斗与事件切换、暂停、结算和重开 |
+| `src/game/config.ts` | 战士、敌人、破韧、遗物、障碍和波次参数 |
+| `src/game/warrior.ts` | 完美格挡、反击蓄势与战意获取 |
+| `src/game/expedition.ts` | 整备节点、强化波、金币、遗物定价及商店刷新 |
+| `src/game/encounters.ts` | 随机遭遇的数据、权重、行动条件和结算 |
+| `src/game/combat.ts`、`entities.ts`、`relics.ts` | 扇形命中、时序、伤害、敌人状态机和遗物事件 |
+| `src/game/enemyPatterns.ts`、`specialEnemy.ts`、`enemyProjectiles.ts` | 敌人招式参数、预警与阶段状态及投射物碰撞 |
+| `src/game/view.ts`、`ui.ts` | 临时几何美术、HUD、弹层和战斗反馈 |
+| `tests/combat.test.mjs`、`tests/encounters.test.mjs` | 战斗、遗物、波次、金币、商店与遭遇规则测试 |
 
-### Vite
+## 验证结果
 
-If you want to customize your build, such as adding plugin (i.e. for loading CSS or fonts), you can modify the `vite/config.*.mjs` file for cross-project changes, or you can modify and/or create new configuration files and target them in specific npm tasks inside of `package.json`. Please see the [Vite documentation](https://vitejs.dev/) for more information.
+`pnpm typecheck`、`pnpm test` 和 `pnpm build` 用于验证类型、规则和生产构建。规则测试覆盖攻击有效段、格挡、战意、破韧、遗物触发、20 波成长、事件和商店交易。
 
-## About log.js
+## 波次、事件与遗物
 
-If you inspect our node scripts you will see there is a file called `log.js`. This file makes a single silent API call to a domain called `gryzor.co`. This domain is owned by Phaser Studio Inc. The domain name is a homage to one of our favorite retro games.
+第 1 波有 3 名敌人，第 19 波有 21 名，第 20 波为单独的 Boss 战。第 11–20 波将生命和攻击的每波增幅放缓至 3.5 和 2.5 个百分点。小型敌人掉落 3–20 金币，中型敌人与守卫按同一金币阶梯结算，金额按波次分段递增并自动入账。结算页显示当局余额，新局从零开始。
 
-We send the following 3 pieces of data to this API: The name of the template being used (vue, react, etc). If the build was 'dev' or 'prod' and finally the version of Phaser being used.
+哥布林弓箭手从第 3 波起替换部分史莱姆，第 8、15 波分别增加至 2、3 名，金币按小型敌人结算。弓箭手在 150–350px 寻找射击机会，前摇最后 0.20 秒固定红色预警线。敌方弹幕飞至场地边界、撞上障碍或成功命中玩家时消散。闪避无敌期间，弹幕可穿过玩家。
 
-At no point is any personal data collected or sent. We don't know about your project files, device, browser or anything else. Feel free to inspect the `log.js` file to confirm this.
+哥布林狂徒、野猪和骷髅术士分别从第 4、6、8 波开始出现。石像守卫生命低于 50% 时进入第二阶段，解锁三个依次标记落点的范围砸地。破韧和阶段变化取消待完成的攻击，已发射弹幕继续飞行。最终强化战仍只生成石像守卫。
 
-Why do we do this? Because being open source means we have no visible metrics about which of our templates are being used. We work hard to maintain a large and diverse set of templates for Phaser developers and this is our small anonymous way to determine if that work is actually paying off, or not. In short, it helps us ensure we're building the tools for you.
+- 普通清场节点可选战斗、奖励或遭遇。战斗让下一波敌人生命提高 25%，额外生成一只史莱姆。清场后可以从最多三件未持有遗物中选一件。最终强化波的奖励自动纳入胜利结算。
+- 最后一次商店前，奖励卡保底 50 金币，再以各 50% 的概率发放一件未持有遗物或额外金币。额外金币为当前波单只史莱姆产出的 10 倍，最低 60。遗物池用尽时固定发放金币。最后一次商店后，奖励改为恢复 25% 最大生命，并从最多两件未持有遗物中选一件。集齐遗物时改为恢复 50% 最大生命。
+- 第 5 波清场后，从三个随机派系中免费选择一项远征祝福，所选派系的遗物抽取权重在本局剩余时间内 ×2。祝福立即作用于强化波奖励、普通奖励、遭遇掉落和商店。已有的遗物联动抽取权重可与祝福相乘。
+- 第 5、8、10、14、17 波的清场流程包含整备商店。每次到访可免费恢复 35% 最大生命值，或获得一件未持有的随机遗物。领取后仍可购买和刷新。
+- 商店每次提供 5 个栏位，遗物价格 50–300 金币。刷新收取 50 金币，同一次到访的已售栏位保持售罄。
+- 遭遇根据进度、金币和遗物池过滤后按权重抽取。钱袋和赌局在最后一次商店前出现。选择时检查所有可能分支的代价，结果只结算一次。临时战斗效果随下一波清场结束。
 
-However, if you don't want to send any data, you can use these commands instead:
+## 战士能力
 
-Dev:
+- 坚守反击挡下正面近战、冲锋和弹幕，普通格挡减伤 70%。按下右键后的 0.25 秒内可完美格挡一次，窗口重启间隔为 0.45 秒。完美格挡免疫该次伤害并削减攻击者 45 点韧性，近战攻击者还会被击退。下一次普攻范围 ×1.45、扇形 130°、韧性伤害 ×2。
+- 普攻命中、普通格挡、完美格挡、破韧分别获得 2、5、12、15 战意。普攻每挥最多从 3 名目标充能，同一目标间隔 0.4 秒。所有来源合计每滚动 1 秒最多获得 35 战意。战意跨波次保留，满 100 时按 Q 消耗。
+- 王庭断章可以接在普攻后，锁定起手时的瞄准方向，蓄力 0.42 秒后在 225px、135° 的扇形内造成 70 点基础伤害与 60 点韧性伤害。对处于破韧易伤的目标额外增伤 25%。施放期间减伤 75% 并免疫击退，大招破韧不返还战意。
 
-```bash
-npm run dev-nolog
-```
+回旋之刃在每第三次挥砍进入有效段时发射，挥空也计数。双刃徽记按每次挥砍判定，猎鹰之眼和破风护腕按每个普攻命中判定。余震核心的爆炸击杀也可触发击杀遗物。幻影披风的残影留在闪避起点，计时在暂停时冻结。不屈纹章每波可触发一次，生命之种在波次清场时回血。永久攻速加成和减益相加。
 
-Build:
+## 伤害体系与遗物
 
-```bash
-npm run build-nolog
-```
+伤害按物理、火焰、自然、寒冰、奥术分类，来源和触发权限各自记录。战士普攻、格挡反击与破韧属于物理，荆棘护甲属于自然，雷鸣戒指与雷暴棱镜属于奥术。结算支持分组增伤、暴击、易伤和各类型抗性。普通敌人的基础抗性默认是 0。
 
-Or, to disable the log entirely, simply delete the file `log.js` and remove the call to it in the `scripts` section of `package.json`:
+燃烧每层每秒造成 3 点火焰伤害，持续 4 秒，施加后 0.5 秒首跳。中毒每层每秒造成 2 点自然伤害，持续 5 秒。两种状态各限 3 层，满层后刷新最早到期的层。减速降低移动速度 25%，持续 3 秒。异常和延迟伤害使用战斗计时，在暂停和奖励选择时冻结。猎人印记与破韧易伤相加。
 
-Before:
+- 余烬宝珠和淬毒短针的基础施加概率分别为 20% 和 15%。最终概率由基础概率、加算后的异常命中加成、攻击施加系数和目标异常抗性共同决定。异常抗性独立于元素伤害抗性。寒霜吊坠每第 5 次普通攻击命中必定施加减速。
+- 腐蚀药剂增加 30% 持续伤害。秘术催化剂增加 30% 异常命中和 20% 持续伤害，腐化之瓶延长之后施加或刷新的持续伤害状态 30%，异常增幅器增加 40% 异常命中。遗物池现有 66 件。
+- 翠蛇之吻每第 4 次普攻命中必定叠毒。千蕊之冠将中毒上限提高至 6 层，每层伤害提高 15%。枯萎之种向 125px 内最近的最多三名存活敌人传播最多两层中毒，传播的毒层从头计时。曼陀罗之心在普攻命中仍存活的目标后，优先消耗三个最早到期的已有毒层并结算其剩余跳伤。
+- 满层时刷新剩余时间最短的一层，并保留该层的跳伤节奏。按 F3 可查看加成，将鼠标移到敌人附近可查看施加概率、异常抗性、层数和剩余时间。
+- 新增六件火焰遗物。赤金铃兰引爆普攻命中前已有的燃烧层，半径 100px。灰烬蝴蝶向范围内最近的敌人传播燃烧。炉心吊坠在成功施加或刷新燃烧时生效。凤凰尾羽充能留到下一次起手，可跨波次，作用于该次挥砍命中的存活目标。
+- 寒冰派系共有八件遗物。减速每次施加或刷新累积寒意，冰晶王冠在达到 4 点时触发冻结。碎雪之镜在普攻命中已冻结的存活敌人时可提前解除冻结，冻结保护从实际解冻时起算。极北之星强化对减速或冻结目标的寒冰伤害和冻结时长。
+- 奥术派系共有八件遗物。雷鸣戒指、雷暴棱镜、星辉指环和群星之瓶造成的原始奥术伤害可积累星辉、触发弹射和推进星盘。弹射和星盘溅射按原目标实际承受的伤害（扣除的生命与吸收的护盾）计算，再按新目标的抗性、易伤结算。月相怀表的脉冲独立计算增伤。群星之瓶的强化在下一次挥砍的首次成功命中时消耗，可跨波次保留。
 
-```json
-"scripts": {
-    "dev": "node log.js dev & dev-template-script",
-    "build": "node log.js build & build-template-script"
-},
-```
+| 分类 | 第三批遗物 |
+| --- | --- |
+| 攻击形态 | 月牙剑刃、残响之刃、孤狼之牙、连击纹章 |
+| 异常状态 | 余烬宝珠、寒霜吊坠、淬毒短针、腐蚀药剂 |
+| 防御机动 | 守护者徽章、琥珀护盾、沉稳战靴、绝境怀表 |
+| 复合构筑 | 雷暴棱镜、碎星火种、猎人印记、终焉号角 |
 
-After:
+既有 24 件遗物沿用原数值与触发条件。孤狼之牙在有效命中窗结束时统一结算，残响之刃记录原命中实际扣除的生命值后追加 40%。护盾吸收的部分不计入失血触发。
 
-```json
-"scripts": {
-    "dev": "dev-template-script",
-    "build": "build-template-script"
-},
-```
+## 原型范围
 
-Either of these will stop `log.js` from running. If you do decide to do this, please could you at least join our Discord and tell us which template you're using! Or send us a quick email. Either will be super-helpful, thank you.
+敌人采用直接追击与简单贴墙滑动。场地为固定地图，主菜单与战斗中的战士使用分层素材，敌人与场地使用临时图形。盗贼、法师、随机地图、装备、永久成长、存档、音频和移动端控制留待后续版本。
 
-## Join the Phaser Community!
+## 战士分层素材与预览
 
-We love to see what developers like you create with Phaser! It really motivates us to keep improving. So please join our community and show-off your work 😄
+运行 `pnpm dev` 后打开 `http://localhost:8080/character-preview.html`。使用 `pnpm build` 和 `pnpm preview` 时，在预览服务器打开同一路径。页面提供待机、行走、单次普攻、持续格挡和水平镜像，并将分层角色与图集左侧的完整形象并排显示。[查看对照截图](docs/warrior-comparison.jpg)
 
-**Visit:** The [Phaser website](https://phaser.io) and follow on [Phaser Twitter](https://twitter.com/phaser_)<br />
-**Play:** Some of the amazing games [#madewithphaser](https://twitter.com/search?q=%23madewithphaser&src=typed_query&f=live)<br />
-**Learn:** [API Docs](https://newdocs.phaser.io), [Support Forum](https://phaser.discourse.group/) and [StackOverflow](https://stackoverflow.com/questions/tagged/phaser-framework)<br />
-**Discord:** Join us on [Discord](https://discord.gg/phaser)<br />
-**Code:** 2000+ [Examples](https://labs.phaser.io)<br />
-**Read:** The [Phaser World](https://phaser.io/community/newsletter) Newsletter<br />
+- `source/warrior_sheet.png` 是仓库里的 1536 × 1024 RGBA 原图。八张部件与参考图在 `public/assets/warrior/`。裁切保留可见源像素，清除低于 12/255 的微弱 Alpha 残留，袖口、手套、裤脚与靴子以平移叠合。安装 Pillow 后可运行 `python tools/split_warrior.py` 重新导出。
+- `src/character/warriorRig.ts` 保存游戏和预览共用的默认组装。X/Y 以脚底原点为准，锚点以部件宽高的比例表示。长剑默认层级为 2，X/Y 是静止时的握持位置，动画中随持剑臂旋转。预览中的调整独立保存在当前浏览器，也可导出 JSON 后重新加载。
+- 图集把外套和披风画在同一张部件上，且肩、髋只有当前视角的切口。默认动画用有限摆幅和原画重叠处理接缝。在调试器中把四肢转到极端角度时，袖口与裤腿的原始接缝可能露出。
 
-Created by [Phaser Studio](mailto:support@phaser.io). Powered by coffee, anime, pixels and love.
+## 工程来源
 
-The Phaser logo and characters are &copy; 2011 - 2025 Phaser Studio Inc.
-
-All rights reserved.
+工程基于 Phaser 官方 `template-vite-ts` 模板，模板许可证保存在 [LICENSE](LICENSE)。

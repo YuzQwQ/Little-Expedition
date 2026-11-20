@@ -21,6 +21,10 @@ export default defineConfig({
     logLevel: 'warning',
     build: {
         rollupOptions: {
+            input: {
+                game: 'index.html',
+                characterPreview: 'character-preview.html'
+            },
             output: {
                 manualChunks: {
                     phaser: ['phaser']
