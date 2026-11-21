@@ -2,9 +2,10 @@ import Phaser from 'phaser';
 import { BattleScene } from './scenes/BattleScene';
 import { MainMenuScene, ResultScene } from './scenes/Screens';
 import { VIEW } from './config';
+import { mountFullscreen } from './fullscreen';
 
 export default function startGame(parent: string) {
-    return new Phaser.Game({
+    const game = new Phaser.Game({
         type: Phaser.AUTO,
         ...VIEW,
         parent,
@@ -17,4 +18,10 @@ export default function startGame(parent: string) {
         },
         scene: [MainMenuScene, BattleScene, ResultScene],
     });
+    const container = document.getElementById(parent);
+    if (container) {
+        const cleanup = mountFullscreen(container, () => game.scale.refresh());
+        game.events.once(Phaser.Core.Events.DESTROY, cleanup);
+    }
+    return game;
 }

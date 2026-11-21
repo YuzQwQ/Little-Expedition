@@ -8,6 +8,7 @@ export interface GameSettings {
 }
 
 const SETTINGS_KEY = 'little-expedition-settings-v1';
+export const SETTINGS_CHANGED = 'little-expedition-settings-changed';
 let current: GameSettings | undefined;
 
 export function normalizeSettings(value?: Partial<GameSettings> | null): GameSettings {
@@ -33,6 +34,7 @@ export function setSettings(settings: GameSettings) {
     } catch {
         // Settings still apply for this session when storage is unavailable.
     }
+    document.dispatchEvent(new Event(SETTINGS_CHANGED));
 }
 
 export function usesMobileControls(mode: ControlMode, coarse = matchMedia('(pointer: coarse)').matches) {
