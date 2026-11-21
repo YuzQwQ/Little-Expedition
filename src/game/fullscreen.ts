@@ -2,6 +2,15 @@ import { getSettings, SETTINGS_CHANGED, usesMobileControls } from './settings';
 
 export function mountFullscreen(parent: HTMLElement, refreshScale: () => void) {
     const coarsePointer = matchMedia('(pointer: coarse)');
+    const orientation = screen.orientation as (ScreenOrientation & {
+        lock?: (value: 'landscape') => Promise<void>;
+    }) | undefined;
+    let landscapeRequested = false;
+    const unlockLandscape = () => {
+        if (!landscapeRequested) return;
+        landscapeRequested = false;
+        orientation?.unlock?.();
+    };
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'game-fullscreen-button';
@@ -18,7 +27,10 @@ export function mountFullscreen(parent: HTMLElement, refreshScale: () => void) {
         if (button.hidden) status.textContent = '';
     };
     const onFullscreenChange = () => {
-        status.textContent = '';
+        if (document.fullscreenElement !== parent) {
+            unlockLandscape();
+            status.textContent = '';
+        }
         sync();
         refreshScale();
     };
@@ -34,6 +46,19 @@ export function mountFullscreen(parent: HTMLElement, refreshScale: () => void) {
                 await document.exitFullscreen();
             } else {
                 await parent.requestFullscreen();
+                if (document.fullscreenElement !== parent) return;
+                try {
+                    if (orientation?.lock) {
+                        landscapeRequested = true;
+                        await orientation.lock('landscape');
+                    } else {
+                        status.textContent = '请将手机横过来游玩。';
+                    }
+                } catch {
+                    if (document.fullscreenElement === parent) {
+                        status.textContent = '请将手机横过来游玩。';
+                    }
+                }
             }
         } catch {
             status.textContent = '无法切换全屏，请重试。';
@@ -47,6 +72,7 @@ export function mountFullscreen(parent: HTMLElement, refreshScale: () => void) {
     coarsePointer.addEventListener('change', sync);
     sync();
     return () => {
+        unlockLandscape();
         document.removeEventListener('fullscreenchange', onFullscreenChange);
         document.removeEventListener(SETTINGS_CHANGED, sync);
         coarsePointer.removeEventListener('change', sync);
