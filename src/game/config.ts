@@ -112,6 +112,12 @@ export const ENEMIES: Record<BasicEnemyKind, BasicEnemySpec> & Record<SpecialEne
 };
 
 export const BREAK = { bonusHpFraction: 0.05, stun: 2, vulnerability: 0.25, duration: 4 };
+export const ENEMY_MOVEMENT = {
+    sidestepPeriod: 1.8, sidestepDuration: 0.42, sidestepSpeed: 0.65,
+    meleeSpacing: 12, retreatSpeed: 0.55,
+    casterMinDistance: 135, casterRetreatDuration: 0.48, casterRetreatReset: 175,
+    lungeWindow: 0.14, lungeDistance: { slime: 15, skeleton: 23, zealot: 22 },
+};
 export const IMPACT = { speed: 98, duration: 0.11, flash: 0.095 };
 export const OBSTACLES = [
     { x: 395, y: 270, width: 132, height: 72 },

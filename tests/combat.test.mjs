@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { routeAroundWalls } from '../src/game/enemyMovement.ts';
 import {
     activeShield, createVital, hitProfile, inSector, recoverPoise, resolveHit,
     segmentHits, swingHasContact, swingPhase, swingRange, vulnerabilityBonus,
@@ -18,6 +19,19 @@ import { normalizeSettings, rotationDegrees, usesMobileControls } from '../src/g
 
 const origin = { x: 0, y: 0 };
 const right = { x: 60, y: 0 };
+
+test('enemy navigation takes successive corners around a wall and resumes direct pursuit', () => {
+    const start = { x: 280, y: 270 };
+    const goal = { x: 515, y: 270 };
+    const first = routeAroundWalls(start, goal, 19);
+    assert.notDeepEqual(first, start);
+    assert.notDeepEqual(first, goal);
+    assert.equal(routeAroundWalls({ x: 300, y: 260 }, goal, 19, first), first);
+    const second = routeAroundWalls(first, goal, 19);
+    assert.ok(second.x > first.x);
+    assert.equal(second.y, first.y);
+    assert.equal(routeAroundWalls(second, goal, 19), goal);
+});
 
 test('screen preferences validate stored modes, rotation and zoom, and auto mode uses the primary pointer', () => {
     assert.deepEqual(normalizeSettings({ controls: 'invalid', zoom: 10 }), { controls: 'auto', zoom: 1, rotate: 'none' });

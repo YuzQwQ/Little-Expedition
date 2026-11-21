@@ -87,7 +87,7 @@ export function advanceSpecial(state: SpecialEnemyState, at: Point, target: Poin
     const sequence = state.steps.length ? state.steps : nextSequence(state);
     const attack = sequence[state.nextStep];
     const engage = attack.kind === 'slam' && attack.anchor === 'self' ? attack.radius : SPECIAL_PATTERNS[state.kind].engage;
-    const inRange = distance(at, target) <= engage && (attack.kind !== 'volley' || clearShot || state.kind === 'guardian');
+    const inRange = distance(at, target) <= engage && (clearShot || state.kind !== 'caster' && state.kind !== 'zealot');
     if (!state.steps.length && !inRange) return { kind: 'chase' as const };
     if (time < state.readyAt) return;
     if (!state.steps.length) {
