@@ -6,6 +6,7 @@ import { SPECIAL_PATTERNS, isSpecialEnemy, type SpecialEnemyKind } from '../enem
 import { DIFFICULTIES, isTrialUnlocked, type Difficulty } from '../difficulty';
 import type { EventReward } from '../expedition';
 import { getSettings, showSettingsButton, usesMobileControls } from '../settings';
+import { overlayRoot } from '../rotation';
 import { ensureTextures } from '../view';
 
 export interface RunResult {
@@ -100,7 +101,7 @@ export class MainMenuScene extends Phaser.Scene {
             keyboardHints.setVisible(!mobile);
             touchHints.setVisible(mobile);
         };
-        const closeSettings = showSettingsButton(this.game.canvas.parentElement!, updateHints);
+        const closeSettings = showSettingsButton(overlayRoot(this.game.canvas.parentElement!), updateHints);
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, closeSettings);
         updateHints();
     }

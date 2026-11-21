@@ -19,6 +19,7 @@ import {
 } from '../expedition';
 import { MobileControls } from '../mobileControls';
 import { RunRelics } from '../relics';
+import { overlayRoot } from '../rotation';
 import { getSettings, usesMobileControls } from '../settings';
 import { closestStatusTargets, spreadPoison, type StatusKind } from '../statuses';
 import { BattleView, sector } from '../view';
@@ -177,7 +178,7 @@ export class BattleScene extends Phaser.Scene {
 
         const settings = getSettings();
         this.mobile = usesMobileControls(settings.controls)
-            ? new MobileControls(this.game.canvas.parentElement!, () => { this.dodgePressed = true; }, () => { this.pausePressed = true; })
+            ? new MobileControls(overlayRoot(this.game.canvas.parentElement!), () => { this.dodgePressed = true; }, () => { this.pausePressed = true; })
             : undefined;
         this.view = new BattleView(this, !!this.mobile);
         this.physics.world.setBounds(0, 0, FIELD.width, FIELD.height);

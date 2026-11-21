@@ -1,16 +1,62 @@
+:root {
+    --safe-top: env(safe-area-inset-top);
+    --safe-right: env(safe-area-inset-right);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --safe-left: env(safe-area-inset-left);
+}
+
 html, body {
     margin: 0;
     width: 100%;
     height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
     background: #0b1317;
 }
 
 #game-container {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
     height: 100dvh;
     overflow: hidden;
+}
+
+/*
+ * 画面旋转：容器本身仍是竖屏尺寸，转 90° 后它的外接框变成横屏尺寸，
+ * Phaser 量到的就是横屏区域，画布照样按 16:9 铺开，再靠这一层旋转变换摆正。
+ * 画布因此会比容器宽，所以要放开裁剪；多出来的部分正好落在旋转后的屏幕里。
+ */
+html.game-rotated #game-container {
+    overflow: visible;
+}
+
+html.game-rotated-cw #game-container {
+    transform: rotate(90deg);
+}
+
+html.game-rotated-ccw #game-container {
+    transform: rotate(-90deg);
+}
+
+/*
+ * 安全区跟着画面一起转：旋转后本地左/右对应设备的上下边，本地上/下对应设备的左右边。
+ */
+html.game-rotated-cw {
+    --safe-top: env(safe-area-inset-right);
+    --safe-right: env(safe-area-inset-bottom);
+    --safe-bottom: env(safe-area-inset-left);
+    --safe-left: env(safe-area-inset-top);
+}
+
+html.game-rotated-ccw {
+    --safe-top: env(safe-area-inset-left);
+    --safe-right: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-right);
+    --safe-left: env(safe-area-inset-bottom);
 }
 
 #game-container:fullscreen {
@@ -21,8 +67,28 @@ html, body {
 
 canvas {
     display: block;
+    flex: none;
     touch-action: none;
     user-select: none;
+}
+
+/*
+ * HTML 覆盖层不跟容器一起缩放：它的尺寸由脚本同步成 Phaser 量到的画面尺寸，
+ * 旋转时正好铺满屏幕，按钮和摇杆才会落在玩家真正看到的四角。
+ */
+.game-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 2;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.game-settings-button,
+.game-fullscreen-button,
+.game-settings {
+    pointer-events: auto;
 }
 
 .game-settings-button,
@@ -50,16 +116,16 @@ canvas {
 .game-fullscreen-status {
     position: absolute;
     z-index: 3;
-    left: calc(max(10px, env(safe-area-inset-left)) + 56px);
+    left: calc(max(10px, var(--safe-left)) + 56px);
 }
 
 .game-fullscreen-button {
-    top: max(10px, env(safe-area-inset-top));
+    top: max(10px, var(--safe-top));
     touch-action: manipulation;
 }
 
 .game-fullscreen-status {
-    top: calc(max(10px, env(safe-area-inset-top)) + 50px);
+    top: calc(max(10px, var(--safe-top)) + 50px);
     padding: 6px 10px;
     border-radius: 6px;
     color: #f8eedb;
@@ -73,8 +139,8 @@ canvas {
 .game-settings-button {
     position: absolute;
     z-index: 2;
-    top: max(12px, env(safe-area-inset-top));
-    right: max(12px, env(safe-area-inset-right));
+    top: max(12px, var(--safe-top));
+    right: max(12px, var(--safe-right));
 }
 
 .game-settings {
@@ -92,6 +158,46 @@ canvas {
 .game-settings label { display: grid; gap: 6px; margin-bottom: 14px; }
 .game-settings form { display: flex; justify-content: flex-end; }
 
+.game-settings-hint {
+    margin: -6px 0 14px;
+    color: #a9bcb4;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+/*
+ * 模态对话框在顶层渲染，不受容器旋转影响，所以它得自己转过去，
+ * 否则玩家横握手机时看到的是侧过来的设置面板。
+ */
+html.game-rotated .game-settings {
+    position: fixed;
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    margin: 0;
+    /* 旋转后画面的高度只剩手机宽度，面板得压扁一点才不会挤出滚动条 */
+    width: min(340px, calc(100dvh - 32px));
+    max-height: calc(100dvw - 32px);
+    padding: 16px;
+    overflow: auto;
+}
+
+html.game-rotated .game-settings h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+}
+
+html.game-rotated .game-settings label {
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+html.game-rotated .game-settings select { min-height: 42px; }
+html.game-rotated .game-settings-hint { margin: 0 0 8px; }
+
+html.game-rotated-cw .game-settings { transform: translate(-50%, -50%) rotate(90deg); }
+html.game-rotated-ccw .game-settings { transform: translate(-50%, -50%) rotate(-90deg); }
+
 .game-settings select {
     min-height: 44px;
     padding: 0 10px;
@@ -105,9 +211,9 @@ canvas {
 .mobile-controls {
     --button-size: clamp(48px, 13vmin, 68px);
     --stick-size: clamp(80px, 25vmin, 144px);
-    --left: max(10px, env(safe-area-inset-left));
-    --right: max(10px, env(safe-area-inset-right));
-    --bottom: max(10px, env(safe-area-inset-bottom));
+    --left: max(10px, var(--safe-left));
+    --right: max(10px, var(--safe-right));
+    --bottom: max(10px, var(--safe-bottom));
     position: absolute;
     z-index: 2;
     inset: 0;
@@ -178,7 +284,7 @@ canvas {
 .mobile-controls .mobile-pause {
     position: absolute;
     left: var(--left);
-    top: max(10px, env(safe-area-inset-top));
+    top: max(10px, var(--safe-top));
     width: 48px;
     height: 44px;
     border-radius: 10px;

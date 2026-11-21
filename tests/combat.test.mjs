@@ -14,18 +14,39 @@ import { calculateStatusChance, closestStatusTargets, EnemyStatuses, spreadPoiso
 import { REFRESH_COST, RunEconomy, blessingChoices, eventCardsAfter, hasFutureShop, isSupplyStop, killGold, takeRelic, waveSpec } from '../src/game/expedition.ts';
 import { WarriorBlock, WarriorResolve } from '../src/game/warrior.ts';
 import { MobileInput, stickVector } from '../src/game/mobileControls.ts';
-import { normalizeSettings, usesMobileControls } from '../src/game/settings.ts';
+import { normalizeSettings, rotationDegrees, usesMobileControls } from '../src/game/settings.ts';
 
 const origin = { x: 0, y: 0 };
 const right = { x: 60, y: 0 };
 
-test('screen preferences validate stored modes and zoom, and auto mode uses the primary pointer', () => {
-    assert.deepEqual(normalizeSettings({ controls: 'invalid', zoom: 10 }), { controls: 'auto', zoom: 1 });
-    assert.deepEqual(normalizeSettings({ controls: 'mobile', zoom: 1.4 }), { controls: 'mobile', zoom: 1.4 });
+test('screen preferences validate stored modes, rotation and zoom, and auto mode uses the primary pointer', () => {
+    assert.deepEqual(normalizeSettings({ controls: 'invalid', zoom: 10 }), { controls: 'auto', zoom: 1, rotate: 'none' });
+    assert.deepEqual(normalizeSettings({ controls: 'mobile', zoom: 1.4 }), { controls: 'mobile', zoom: 1.4, rotate: 'none' });
+    assert.deepEqual(normalizeSettings({ rotate: 'cw' }), { controls: 'auto', zoom: 1, rotate: 'cw' });
+    assert.deepEqual(normalizeSettings({ rotate: 'sideways' }), { controls: 'auto', zoom: 1, rotate: 'none' });
+    assert.equal(rotationDegrees('cw'), 90);
+    assert.equal(rotationDegrees('ccw'), -90);
+    assert.equal(rotationDegrees('none'), 0);
     assert.equal(usesMobileControls('auto', true), true);
     assert.equal(usesMobileControls('auto', false), false);
     assert.equal(usesMobileControls('desktop', true), false);
     assert.equal(usesMobileControls('mobile', false), true);
+});
+
+test('stick input on a rotated frame still points where the player drags', () => {
+    const touch = new MobileInput();
+    touch.begin('move', 1);
+    // Screen-space "up" while the picture is rotated 90° clockwise means "left" in game space.
+    touch.move('move', 1, 0, -40, 40, Math.PI / 2);
+    const frame = touch.frame(0);
+    assert.ok(Math.abs(frame.movement.x + 1) < 1e-9);
+    assert.ok(Math.abs(frame.movement.y) < 1e-9);
+    touch.move('move', 1, -40, 0, 40, Math.PI / 2);
+    assert.ok(Math.abs(touch.frame(0).movement.y - 1) < 1e-9);
+    touch.move('move', 1, 0, -40, 40, -Math.PI / 2);
+    const counter = touch.frame(0);
+    assert.ok(Math.abs(counter.movement.x - 1) < 1e-9);
+    assert.ok(Math.abs(counter.movement.y) < 1e-9);
 });
 
 test('independent touch pointers move and attack at once, and a brief attack tap is retained', () => {

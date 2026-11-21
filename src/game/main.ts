@@ -3,14 +3,18 @@ import { BattleScene } from './scenes/BattleScene';
 import { MainMenuScene, ResultScene } from './scenes/Screens';
 import { VIEW } from './config';
 import { mountFullscreen } from './fullscreen';
+import { mountRotation, prepareRotation } from './rotation';
 
 export default function startGame(parent: string) {
+    const container = document.getElementById(parent);
+    // The rotation class has to be on the DOM first: Phaser measures the parent box while booting.
+    if (container) prepareRotation(container);
     const game = new Phaser.Game({
         type: Phaser.AUTO,
         ...VIEW,
         parent,
         backgroundColor: '#101b20',
-        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.NO_CENTER },
         input: { mouse: { preventDefaultDown: true, preventDefaultUp: true } },
         physics: {
             default: 'arcade',
@@ -18,10 +22,17 @@ export default function startGame(parent: string) {
         },
         scene: [MainMenuScene, BattleScene, ResultScene],
     });
-    const container = document.getElementById(parent);
     if (container) {
-        const cleanup = mountFullscreen(container, () => game.scale.refresh());
-        game.events.once(Phaser.Core.Events.DESTROY, cleanup);
+        const refreshScale = () => {
+            game.scale.getParentBounds();
+            game.scale.refresh();
+        };
+        const cleanup = mountFullscreen(container, refreshScale);
+        const stopRotation = mountRotation(game);
+        game.events.once(Phaser.Core.Events.DESTROY, () => {
+            cleanup();
+            stopRotation();
+        });
     }
     return game;
 }

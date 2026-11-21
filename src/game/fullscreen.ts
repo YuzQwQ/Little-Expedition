@@ -1,4 +1,7 @@
-import { getSettings, SETTINGS_CHANGED, usesMobileControls } from './settings';
+import { getSettings, SETTINGS_CHANGED, usesMobileControls } from './settings.ts';
+import { overlayRoot } from './rotation.ts';
+
+const HINT = '请横握手机；方向不对可在设置里选「画面旋转」。';
 
 export function mountFullscreen(parent: HTMLElement, refreshScale: () => void) {
     const coarsePointer = matchMedia('(pointer: coarse)');
@@ -17,8 +20,7 @@ export function mountFullscreen(parent: HTMLElement, refreshScale: () => void) {
     const status = document.createElement('div');
     status.className = 'game-fullscreen-status';
     status.setAttribute('role', 'status');
-    parent.append(button, status);
-
+    overlayRoot(parent).append(button, status);
     const sync = () => {
         const active = document.fullscreenElement === parent;
         button.hidden = !active && !usesMobileControls(getSettings().controls, coarsePointer.matches);
@@ -52,11 +54,11 @@ export function mountFullscreen(parent: HTMLElement, refreshScale: () => void) {
                         landscapeRequested = true;
                         await orientation.lock('landscape');
                     } else {
-                        status.textContent = '请将手机横过来游玩。';
+                        status.textContent = HINT;
                     }
                 } catch {
                     if (document.fullscreenElement === parent) {
-                        status.textContent = '请将手机横过来游玩。';
+                        status.textContent = HINT;
                     }
                 }
             }

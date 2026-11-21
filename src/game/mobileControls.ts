@@ -1,4 +1,5 @@
 import type { Point } from './combat.ts';
+import { screenRotationRadians } from './rotation.ts';
 
 type Pad = 'move' | 'attack' | 'guard' | 'ultimate';
 interface Contact { pointer: number; vector: Point; heading?: number }
@@ -25,10 +26,13 @@ export class MobileInput {
         return true;
     }
 
-    move(pad: Pad, pointer: number, dx: number, dy: number, radius: number) {
+    /** `rotation` is the CSS rotation (radians, clockwise) of the game frame; stick input is folded back into game space. */
+    move(pad: Pad, pointer: number, dx: number, dy: number, radius: number, rotation = 0) {
         const contact = this.contacts.get(pad);
         if (contact?.pointer !== pointer) return;
-        contact.vector = stickVector(dx, dy, radius);
+        const cos = Math.cos(-rotation);
+        const sin = Math.sin(-rotation);
+        contact.vector = stickVector(dx * cos - dy * sin, dx * sin + dy * cos, radius);
         if (contact.vector.x !== 0 || contact.vector.y !== 0) {
             contact.heading = Math.atan2(contact.vector.y, contact.vector.x);
             if (pad === 'attack' && this.attackTap) this.attackTap.heading = contact.heading;
@@ -119,7 +123,9 @@ export class MobileControls {
         let anchor = ORIGIN;
         let radius = 1;
         const update = (event: PointerEvent) => {
-            const vector = this.input.move(pad, event.pointerId, event.clientX - anchor.x, event.clientY - anchor.y, radius);
+            const dx = event.clientX - anchor.x;
+            const dy = event.clientY - anchor.y;
+            const vector = this.input.move(pad, event.pointerId, dx, dy, radius, screenRotationRadians());
             if (vector) {
                 button.style.setProperty('--stick-x', `${vector.x * radius / 2}px`);
                 button.style.setProperty('--stick-y', `${vector.y * radius / 2}px`);
