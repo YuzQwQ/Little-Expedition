@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
+import { playCue } from '../audio';
 import { loadWarriorTextures } from '../../character/warriorVisual';
-import { ARCHER, ENEMIES, FIELD, OBSTACLES, RELICS, VIEW, WAVES, WARRIOR, type EnemyKind, type RelicId } from '../config';
+import { loadCoinTexture, loadRelicTextures } from '../ui';
+import { ARCHER, CROWNLESS, ENEMIES, FIELD, OBSTACLES, RELICS, VIEW, WAVES, WARRIOR, type EnemyKind, type RelicId } from '../config';
 import {
     activeShield, createVital, direction, distance, heal, hitProfile, inSector, recoverPoise, resolveHit, segmentHits,
     swingContactEnd, swingHasContact, swingPhase, swingRange, vulnerabilityBonus,
@@ -8,9 +10,9 @@ import {
 } from '../combat';
 import { chargeReach, createEnemy, freezeEnemy, spawnPoint, updateArcherEnemy, updateEnemy, updateSpecialEnemy, type Enemy } from '../entities';
 import { advanceEnemyProjectile, launchEnemyProjectile, movingCircleContact, type EnemyProjectile } from '../enemyProjectiles';
-import { isSpecialEnemy, type SpecialEnemyKind } from '../enemyPatterns';
+import { isBossKind, isSpecialEnemy, type SpecialAttack, type SpecialEnemyKind } from '../enemyPatterns';
 import { DIFFICULTIES, isTrialUnlocked, unlockTrial, type Difficulty } from '../difficulty';
-import { cancelSpecialAttack, changeGuardianPhase } from '../specialEnemy';
+import { cancelSpecialAttack, changeBossPhase } from '../specialEnemy';
 import { drawEncounter, type EncounterSession, type WaveModifiers } from '../encounters';
 import {
     BLESSING_WAVE, LATE_REWARD_CHOICES, LATE_REWARD_HEAL, OPENING_GOLD, RunEconomy, blessingChoices, eventCardsAfter,
@@ -20,7 +22,8 @@ import {
 import { MobileControls } from '../mobileControls';
 import { RunRelics } from '../relics';
 import { overlayRoot } from '../rotation';
-import { getSettings, usesMobileControls } from '../settings';
+import { createSettingsPanel, getSettings, usesMobileControls, type SettingsPanel } from '../settings';
+import { markTipSeen, pendingTips, type TipId } from '../tips';
 import { closestStatusTargets, spreadPoison, type StatusKind } from '../statuses';
 import { BattleView, sector } from '../view';
 import { WarriorBlock, WarriorResolve } from '../warrior';
@@ -109,6 +112,11 @@ export class BattleScene extends Phaser.Scene {
     private economy: RunEconomy;
     private keys: Keys;
     private mobile?: MobileControls;
+    private settings?: SettingsPanel;
+    private pauseStage?: 'menu' | 'quit';
+    private tips: Set<TipId>;
+    private supplyTip: boolean;
+    private crownless?: { body: Enemy; head: Enemy; lit: boolean; reviveAt: number };
     private touchUltimateAiming: boolean;
     private mode: Mode;
     private clock: number;
@@ -136,7 +144,11 @@ export class BattleScene extends Phaser.Scene {
 
     constructor() { super('battle'); }
 
-    preload() { loadWarriorTextures(this); }
+    preload() {
+        loadWarriorTextures(this);
+        loadCoinTexture(this);
+        loadRelicTextures(this);
+    }
 
     create(data?: Partial<Pick<RunResult, 'testEnemy' | 'difficulty'>>) {
         this.mode = 'fighting';
@@ -148,6 +160,10 @@ export class BattleScene extends Phaser.Scene {
         this.waveModifiers = {};
         this.encounter = undefined;
         this.kills = 0;
+        // 只看过一次的引导，跨局记住；本局内用 Set 消耗，避免每次读 storage。
+        this.tips = new Set(pendingTips());
+        this.supplyTip = false;
+        this.crownless = undefined;
         this.facing = 1;
         this.walking = false;
         this.aim = 0;
@@ -177,9 +193,13 @@ export class BattleScene extends Phaser.Scene {
         this.economy = new RunEconomy();
 
         const settings = getSettings();
+        // 只有事件收入和花费会响；击杀掉落的金币太频繁，只留飘字。
+        this.economy.onGold = change => playCue(change.kind === 'spend' ? 'spend' : 'coin');
         this.mobile = usesMobileControls(settings.controls)
             ? new MobileControls(overlayRoot(this.game.canvas.parentElement!), () => { this.dodgePressed = true; }, () => { this.pausePressed = true; })
             : undefined;
+        // 操作端在开局时已经决定了 HUD 和输入，战斗里只开放能即时生效的项。
+        this.settings = createSettingsPanel(overlayRoot(this.game.canvas.parentElement!), () => this.applySettings(), { controls: false });
         this.view = new BattleView(this, !!this.mobile);
         this.physics.world.setBounds(0, 0, FIELD.width, FIELD.height);
         this.player = this.view.createWarrior({ x: FIELD.width / 2, y: FIELD.height / 2 });
@@ -223,6 +243,7 @@ export class BattleScene extends Phaser.Scene {
             this.game.events.off(Phaser.Core.Events.BLUR, this.onBlur, this);
             this.scale.off(Phaser.Scale.Events.RESIZE, this.cancelTouchInput, this);
             this.mobile?.destroy();
+            this.settings?.destroy();
             this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.draw, this);
         });
 
@@ -258,6 +279,25 @@ export class BattleScene extends Phaser.Scene {
         this.touchUltimateAiming = false;
     }
 
+    private checkTips() {
+        // 只在没有别的提示挡着时弹，否则等下一帧（教程条会自己淡出）。
+        if (this.testEnemy || this.view.tipVisible) return;
+        if (this.wave === 0 && this.clock > 1 && this.showTip('guard', '坚守反击', this.mobile
+            ? '按住右摇杆举盾：减伤七成，移动减半。\n敌人抬手时再按下 → 完美格挡，伤害归零并震开对手。'
+            : '按住右键举盾：减伤七成，移动减半。\n敌人抬手时再按下 → 完美格挡，伤害归零并震开对手。')) return;
+        if (!this.resolve.ready) return;
+        this.showTip('ultimate', '战意已满', this.mobile
+            ? '按住「大招」瞄准，松开释放「王庭断章」。\n对韧性被打空的敌人伤害更高。'
+            : '按 Q 朝准星方向释放「王庭断章」。\n对韧性被打空的敌人伤害更高。');
+    }
+
+    private showTip(id: TipId, title: string, body: string) {
+        if (!this.tips.delete(id)) return false;
+        markTipSeen(id);
+        this.view.tipOverlay(title, body);
+        return true;
+    }
+
     private spawnWave() {
         const wave = waveSpec(this.wave + 1, this.challenge);
         const hpScale = this.testEnemy ? 1 : wave.hpScale * DIFFICULTIES[this.difficulty].enemyHp;
@@ -274,9 +314,102 @@ export class BattleScene extends Phaser.Scene {
             const enemy = createEnemy(this.view, this, kind, at, hpScale, this.clock, slot);
             this.enemyGroup.add(enemy.sprite);
             this.enemies.push(enemy);
+            if (kind === 'crownlessBody') this.spawnCrownlessHead(enemy, at, hpScale);
         }
-        const featured = this.testEnemy ?? (wave.guardian ? 'guardian' : undefined);
+        const featured = this.testEnemy ?? (wave.guardian ? 'guardian' : wave.crownlessBody ? 'crownlessBody' : undefined);
         this.view.waveBanner(this.wave + 1, this.challenge, featured ? ENEMIES[featured].label : undefined);
+        playCue('wave');
+    }
+
+    private spawnCrownlessHead(body: Enemy, from: Point, hpScale: number) {
+        // 残魂从铠甲上方浮起来，之后按「保持距离」的方式自己走位。
+        const head = createEnemy(this.view, this, 'crownlessHead', {
+            x: Phaser.Math.Clamp(from.x + 130, 80, FIELD.width - 80),
+            y: Phaser.Math.Clamp(from.y - 70, 80, FIELD.height - 80),
+        }, hpScale, this.clock, 0);
+        this.enemyGroup.add(head.sprite);
+        this.enemies.push(head);
+        this.crownless = { body, head, lit: true, reviveAt: 0 };
+    }
+
+    private armorOf(enemy: Enemy) {
+        const link = this.crownless;
+        return link && link.lit && enemy === link.body ? CROWNLESS.armor : 0;
+    }
+
+    /** 击碎残魂：不判定死亡，改为让铠甲失衡一段时间。返回 true 表示这次击杀已被接管。 */
+    private suppressCrownlessHead(enemy: Enemy, time: number): boolean {
+        const link = this.crownless;
+        if (!link || link.head !== enemy) return false;
+        link.lit = false;
+        link.reviveAt = time + CROWNLESS.darkDuration;
+        enemy.sprite.setAlpha(0.3);
+        if (enemy.special) cancelSpecialAttack(enemy.special, time);
+        enemy.sprite.setVelocity(0);
+        if (link.body.special) cancelSpecialAttack(link.body.special, time);
+        link.body.vital.stunUntil = Math.max(link.body.vital.stunUntil, link.reviveAt);
+        link.body.state = 'stunned';
+        playCue('break');
+        this.view.notice(`残魂熄灭 · 铠甲失衡 ${CROWNLESS.darkDuration} 秒`);
+        return true;
+    }
+
+    /** 铠甲倒下时残魂一起消散，否则它会以 0 血留在场上挡住清场判定。 */
+    private dismissCrownlessHead() {
+        const link = this.crownless;
+        if (!link) return;
+        this.crownless = undefined;
+        const { head } = link;
+        head.vital.hp = 0;
+        this.relics.forgetTarget(head.vital);
+        head.bars.destroy();
+        head.sprite.setVelocity(0).setVisible(false);
+        this.enemies = this.enemies.filter(enemy => enemy !== head);
+        // 这一帧可能还有别的遍历在跑（连锁爆炸、遗物 AoE），销毁推迟到帧末。
+        this.time.delayedCall(0, () => {
+            if (head.sprite.active) this.enemyGroup.remove(head.sprite, true, true);
+        });
+    }
+
+    private updateCrownless() {
+        const link = this.crownless;
+        if (!link || link.lit || this.clock < link.reviveAt) return;
+        link.lit = true;
+        link.head.vital.hp = Math.max(1, Math.round(link.head.vital.maxHp * CROWNLESS.reviveFraction));
+        link.head.sprite.setAlpha(1);
+        if (link.head.special) link.head.special.readyAt = this.clock + CROWNLESS.reviveDelay;
+        playCue('wave');
+        this.view.notice('残魂重燃 · 铠甲复起');
+    }
+
+    /** 裂地剑气：沿朝向依次爆开，每一段各自判定，可以侧移或闪避穿过去。 */
+    private breakLine(origin: Point, heading: number, attack: SpecialAttack & { kind: 'line' }, damage: number) {
+        const dx = Math.cos(heading), dy = Math.sin(heading);
+        for (let step = 1; step <= attack.steps; step += 1) {
+            const at = {
+                x: origin.x + dx * attack.length * step / attack.steps,
+                y: origin.y + dy * attack.length * step / attack.steps,
+            };
+            this.time.delayedCall(attack.interval * step * 1000, () => {
+                if (this.mode !== 'fighting') return;
+                this.view.showBurst(at, attack.width, 0xffcf9a);
+                this.cameras.main.shake(80, 0.003, true);
+                const player = this.player.body!.center;
+                if (this.inDodgeImmunity() || distance(at, player) > attack.width) return;
+                this.hurtPlayer(at, player, damage, { kind: 'area' });
+            });
+        }
+    }
+
+    private bossLabel(): string | undefined {
+        const boss = this.enemies.find(enemy => isBossKind(enemy.kind));
+        if (!boss) return this.testEnemy ? ENEMIES[this.testEnemy].label : undefined;
+        const link = this.crownless;
+        if (boss.kind === 'crownlessBody') {
+            if (!link || link.lit) return '无冠者 · 魂甲';
+            return `无冠者 · 失衡 ${Math.max(0, link.reviveAt - this.clock).toFixed(1)} 秒`;
+        }
+        return `${ENEMIES[boss.kind].label} · 阶段 ${boss.special?.phase}`;
     }
 
     update(time: number, delta: number) {
@@ -286,10 +419,14 @@ export class BattleScene extends Phaser.Scene {
         this.ultimatePressed = false;
         if (this.pausePressed) {
             this.pausePressed = false;
-            if (this.mode === 'paused') this.resume();
-            else if (this.mode === 'fighting') {
+            if (this.settings?.isOpen()) {
+                this.settings.close();
+            } else if (this.mode === 'paused') {
+                if (this.pauseStage === 'quit') this.showPause();
+                else this.resume();
+            } else if (this.mode === 'fighting') {
                 this.freeze('paused');
-                this.view.pauseOverlay(() => this.resume());
+                this.showPause();
             }
             return;
         }
@@ -341,6 +478,7 @@ export class BattleScene extends Phaser.Scene {
             this.facing = movement.x < 0 ? -1 : 1;
         }
 
+        this.checkTips();
         this.applyPlayerVelocity(movement);
         const tuning = DIFFICULTIES[this.difficulty];
         const damageScale = this.testEnemy ? 1 : WAVES[this.wave].damageScale * (this.waveModifiers.enemyDamage ?? 1) * tuning.enemyDamage;
@@ -371,6 +509,8 @@ export class BattleScene extends Phaser.Scene {
                     for (const offset of attack.headings) {
                         shots.push(launchEnemyProjectile(anchor, heading + offset * Math.PI / 180, damage, attack.projectile, projectileSpeed, enemy));
                     }
+                } else if (attack.kind === 'line') {
+                    this.breakLine(anchor, heading, attack, damage);
                 } else if (!this.inDodgeImmunity() && (attack.kind === 'slam' ? distance(anchor, at) <= attack.radius
                     : attack.kind === 'cone' && inSector(anchor, at, heading, attack.radius, attack.degrees))) {
                     this.hurtPlayer(anchor, at, damage, { kind: attack.kind === 'slam' ? 'area' : 'melee', attacker: enemy });
@@ -434,6 +574,7 @@ export class BattleScene extends Phaser.Scene {
         if (dodgeStart && this.dodge) {
             this.chargeThrough(dodgeStart, this.player.body!.center, this.dodge);
         }
+        this.updateCrownless();
         this.removeDefeated();
         if (this.enemies.length === 0) this.settleWave();
     }
@@ -551,6 +692,7 @@ export class BattleScene extends Phaser.Scene {
         };
         this.nextAttack = this.clock + WARRIOR.attack.interval / this.swing.speed;
         this.faceHeading(this.aim);
+        playCue('swing');
         if (this.swing.skipWindup) this.swingAt(this.player.body!.center, this.swing);
     }
 
@@ -562,6 +704,7 @@ export class BattleScene extends Phaser.Scene {
         this.ultimate = { started: this.clock, heading, released: false };
         this.vital.knockUntil = 0;
         this.faceHeading(heading);
+        playCue('ultimate');
     }
 
     private updateUltimate(at: Point) {
@@ -830,20 +973,29 @@ export class BattleScene extends Phaser.Scene {
         if (type === 'arcane' && profile.arcaneMode === 'original' && this.relics.astrolabeReady) {
             hit = { ...hit, amount: hit.amount * (1 + RELICS.dawnAstrolabe.bonus) };
         }
+        const armor = this.armorOf(enemy);
+        if (armor > 0) hit = { ...hit, amount: hit.amount * (1 - armor) };
         const result = resolveHit(enemy.vital, hit, time, burst?.bonus);
         if (!result) return null;
         if (!result.tags.dot && result.damage > 0) {
+            playCue('hit');
             this.view.showHit(hit.target, result.damage, DAMAGE_COLORS[result.type], result.critical ? '暴击 ' : '');
         }
-        if (result.killed) this.defeated.push({
-            enemy,
-            vulnerable: vulnerabilityBonus(enemy.vital, time) > 0, chainDepth: hit.chainDepth ?? 0,
-            poisonLayers: this.relics.held.has('witherSeed')
-                ? enemy.statuses.stacks('poison', time, result.tags.dot && result.type === 'nature') : 0,
-            burning: enemy.statuses.stacks('burning', time, result.tags.dot && result.type === 'fire') > 0,
-            cold,
-        });
+        if (result.killed && this.suppressCrownlessHead(enemy, time)) {
+            // 残魂被击碎，铠甲失衡；不进入常规的死亡结算
+        } else if (result.killed) {
+            if (this.crownless?.body === enemy) this.dismissCrownlessHead();
+            this.defeated.push({
+                enemy,
+                vulnerable: vulnerabilityBonus(enemy.vital, time) > 0, chainDepth: hit.chainDepth ?? 0,
+                poisonLayers: this.relics.held.has('witherSeed')
+                    ? enemy.statuses.stacks('poison', time, result.tags.dot && result.type === 'nature') : 0,
+                burning: enemy.statuses.stacks('burning', time, result.tags.dot && result.type === 'fire') > 0,
+                cold,
+            });
+        }
         if (result.breakProfile) {
+            playCue('break');
             if (hit.source !== 'ultimate') this.resolve.onPoiseBreak(time);
             enemy.state = 'stunned';
             enemy.sprite.setVelocity(0, 0);
@@ -859,8 +1011,10 @@ export class BattleScene extends Phaser.Scene {
             }
             if (burst) this.burstAround(hit.target, burst, 'collapse', enemy);
         }
-        if (enemy.special && changeGuardianPhase(enemy.special, enemy.vital.hp, enemy.vital.maxHp, time)) {
+        if (enemy.special && changeBossPhase(enemy.special, enemy.vital.hp, enemy.vital.maxHp, time)) {
             enemy.sprite.setVelocity(0);
+            playCue('break');
+            this.view.notice(`${ENEMIES[enemy.kind].label} · 第二阶段`);
         }
         if (result.arcane?.canTriggerEffects) {
             this.resolveArcaneFollowups(result.arcane, result.healthDamage + result.absorbed, enemy, hit.target, time);
@@ -905,12 +1059,15 @@ export class BattleScene extends Phaser.Scene {
             this.dodgeWork = this.relics.onSuccessfulBlock(this.dodgeWork, this.relics.dodgeRecoveryRate(this.vital));
         }
         if (result.guard === 'perfect') {
+            playCue('parry');
             this.view.showPerfectGuard(target);
             this.parryAttacker(incoming, target, time);
             return true;
         }
+        if (result.guard) playCue('block');
         if (result.absorbed > 0) this.view.showHit({ x: target.x, y: target.y - 24 }, result.absorbed, 0xf4d287, '护盾 ');
         if (result.healthDamage > 0) {
+            playCue('hurt');
             this.view.showHit(target, result.healthDamage, result.blocked ? 0xa6d7d2 : 0xf2a198, result.blocked ? '格挡 ' : '');
         }
         const hpAfterHit = this.vital.hp;
@@ -1009,7 +1166,7 @@ export class BattleScene extends Phaser.Scene {
             enemy.sprite.destroy();
         }
         this.defeated.length = 0;
-        this.enemies = this.enemies.filter(enemy => enemy.vital.hp > 0);
+        this.enemies = this.enemies.filter(enemy => enemy.vital.hp > 0 || enemy === this.crownless?.head);
         this.resonances = this.resonances.filter(echo => echo.enemy.vital.hp > 0);
     }
 
@@ -1038,12 +1195,32 @@ export class BattleScene extends Phaser.Scene {
 
     private resume() {
         this.mode = 'fighting';
+        this.pauseStage = undefined;
         this.ignorePointerUntilUp = true;
         this.view.hideOverlay();
         this.view.freeze(false);
         this.physics.resume();
         this.mobile?.setActive(true);
         this.cameras.main.setLerp(0.16, 0.16);
+    }
+
+    private showPause() {
+        this.pauseStage = 'menu';
+        this.view.pauseOverlay({
+            resume: () => this.resume(),
+            settings: () => this.settings?.open(),
+            quit: () => {
+                this.pauseStage = 'quit';
+                this.view.quitConfirmOverlay(
+                    () => this.scene.start('menu'),
+                    () => this.showPause(),
+                );
+            },
+        });
+    }
+
+    private applySettings() {
+        this.cameras.main.setZoom(getSettings().zoom);
     }
 
     private settleWave() {
@@ -1129,6 +1306,8 @@ export class BattleScene extends Phaser.Scene {
         const cleared = this.wave + 1;
         if (isSupplyStop(cleared)) {
             this.freeze('shop');
+            this.supplyTip = this.tips.delete('supply');
+            if (this.supplyTip) markTipSeen('supply');
             this.economy.openShop(this.relics.held, Math.random, this.relics.blessing);
             this.showShop();
             return;
@@ -1229,7 +1408,7 @@ export class BattleScene extends Phaser.Scene {
             if (this.mode === 'shop' && economy.refresh(held, Math.random, blessing)) this.showShop();
         }, () => {
             this.startNextWave('shop');
-        });
+        }, this.supplyTip ? '首次到店 · 金币只在本局有效，离开商店即进入下一波' : undefined);
     }
 
     private startNextWave(from: Mode, challenge = false, modifiers: WaveModifiers = {}) {
@@ -1243,6 +1422,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private endRun(victory: boolean, finalReward?: EventReward) {
+        playCue(victory ? 'victory' : 'defeat');
         this.freeze(victory ? 'victory' : 'defeat');
         this.enemyProjectiles.length = 0;
         const unlockedTrial = victory && !this.testEnemy && this.difficulty === 'normal' && unlockTrial();
@@ -1394,8 +1574,7 @@ export class BattleScene extends Phaser.Scene {
             this.waveModifiers.enemyDamage ? '◇  本波敌人强化' : '',
         ].filter(Boolean);
         const rate = this.relics.dodgeRecoveryRate(this.vital);
-        const guardian = this.enemies.find(enemy => enemy.kind === 'guardian');
-        const featured = guardian ? `石像守卫 · 阶段 ${guardian.special?.phase}` : this.testEnemy && ENEMIES[this.testEnemy].label;
+        const featured = this.bossLabel();
         view.updateHud(this.vital, this.wave + 1, this.enemies.length, this.economy.gold, this.relics.held,
             this.dodgeWork / rate, this.relics.dodgeCooldown / rate, buffs.join('   ·   '), activeShield(this.vital, time),
             featured, this.relics.blessing);

@@ -14,6 +14,7 @@ export interface GameSettings {
     controls: ControlMode;
     zoom: BattleZoom;
     rotate: RotationMode;
+    sound: boolean;
 }
 
 const SETTINGS_KEY = 'little-expedition-settings-v1';
@@ -24,7 +25,8 @@ export function normalizeSettings(value?: Partial<GameSettings> | null): GameSet
     const controls = value?.controls === 'desktop' || value?.controls === 'mobile' ? value.controls : 'auto';
     const zoom = BATTLE_ZOOMS.find(option => option === value?.zoom) ?? 1;
     const rotate: RotationMode = value?.rotate === 'cw' || value?.rotate === 'ccw' ? value.rotate : 'none';
-    return { controls, zoom, rotate };
+    const sound = value?.sound !== false;
+    return { controls, zoom, rotate, sound };
 }
 
 export function rotationDegrees(mode: RotationMode) {
@@ -55,21 +57,40 @@ export function usesMobileControls(mode: ControlMode, coarse = matchMedia('(poin
     return mode === 'mobile' || (mode === 'auto' && coarse);
 }
 
-export function showSettingsButton(parent: HTMLElement, onChange: () => void) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'game-settings-button';
-    button.textContent = '设置';
+export interface SettingsPanel {
+    open(): void;
+    close(): void;
+    isOpen(): boolean;
+    destroy(): void;
+}
+
+let panelCount = 0;
+
+/**
+ * The settings dialog on its own, so the pause menu can open it without a second floating button.
+ * `controls: false` hides the 操作端 row: switching input mid-run would need a rebuilt HUD.
+ */
+export function createSettingsPanel(
+    parent: HTMLElement, onChange: () => void, options: { controls?: boolean } = {},
+): SettingsPanel {
+    panelCount += 1;
+    const headingId = `game-settings-heading-${panelCount}`;
     const dialog = document.createElement('dialog');
     dialog.className = 'game-settings';
-    dialog.setAttribute('aria-labelledby', 'game-settings-heading');
+    dialog.setAttribute('aria-labelledby', headingId);
     dialog.innerHTML = `
-        <h2 id="game-settings-heading">设置</h2>
-        <label>操作端
+        <h2 id="${headingId}">设置</h2>
+        ${options.controls === false ? '' : `<label>操作端
             <select name="controls">
                 <option value="auto">自动</option>
                 <option value="desktop">键鼠</option>
                 <option value="mobile">触屏</option>
+            </select>
+        </label>`}
+        <label>音效
+            <select name="sound">
+                <option value="on">开</option>
+                <option value="off">关</option>
             </select>
         </label>
         <label>画面旋转
@@ -81,28 +102,52 @@ export function showSettingsButton(parent: HTMLElement, onChange: () => void) {
         </label>
         <form method="dialog"><button type="submit">完成</button></form>
     `;
-    const controls = dialog.querySelector<HTMLSelectElement>('[name="controls"]')!;
+    const controls = dialog.querySelector<HTMLSelectElement>('[name="controls"]');
+    const sound = dialog.querySelector<HTMLSelectElement>('[name="sound"]')!;
     const rotate = dialog.querySelector<HTMLSelectElement>('[name="rotate"]')!;
     const zoom = dialog.querySelector<HTMLSelectElement>('[name="zoom"]')!;
-    button.onclick = () => {
-        const saved = getSettings();
-        controls.value = saved.controls;
-        rotate.value = saved.rotate;
-        zoom.value = String(saved.zoom);
-        dialog.showModal();
+    const panel: SettingsPanel = {
+        open() {
+            const saved = getSettings();
+            if (controls) controls.value = saved.controls;
+            sound.value = saved.sound ? 'on' : 'off';
+            rotate.value = saved.rotate;
+            zoom.value = String(saved.zoom);
+            dialog.showModal();
+        },
+        close() {
+            if (dialog.open) dialog.close();
+        },
+        isOpen: () => dialog.open,
+        destroy() {
+            panel.close();
+            dialog.remove();
+        },
     };
     dialog.onchange = () => {
+        const saved = getSettings();
         setSettings({
-            controls: controls.value as ControlMode,
+            controls: controls ? controls.value as ControlMode : saved.controls,
             zoom: Number(zoom.value) as BattleZoom,
             rotate: rotate.value as RotationMode,
+            sound: sound.value !== 'off',
         });
         onChange();
     };
-    parent.append(button, dialog);
+    parent.append(dialog);
+    return panel;
+}
+
+export function showSettingsButton(parent: HTMLElement, onChange: () => void) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'game-settings-button';
+    button.textContent = '设置';
+    const panel = createSettingsPanel(parent, onChange);
+    button.onclick = () => panel.open();
+    parent.append(button);
     return () => {
-        if (dialog.open) dialog.close();
-        dialog.remove();
+        panel.destroy();
         button.remove();
     };
 }

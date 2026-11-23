@@ -109,6 +109,20 @@ export const ENEMIES: Record<BasicEnemyKind, BasicEnemySpec> & Record<SpecialEne
     guardian: {
         label: '遗迹石像守卫', hp: 620, speed: 86, radius: 36, poise: 180, warning: 0xff8078,
     },
+    crownlessBody: {
+        label: '无冠者', hp: 360, speed: 96, radius: 30, poise: 150, warning: 0xff9d7a,
+    },
+    crownlessHead: {
+        label: '残魂之首', hp: 140, speed: 148, radius: 18, poise: 50, warning: 0xd9a4ff,
+    },
+};
+
+/** 无冠者：铠甲与残魂之首互相绑定的规则。 */
+export const CROWNLESS = {
+    armor: 0.40,          // 残魂点亮时，铠甲受到的伤害减免
+    darkDuration: 6,      // 击碎残魂后铠甲失衡的时长
+    reviveFraction: 0.5,  // 残魂重燃时恢复的血量比例
+    reviveDelay: 0.6,     // 重燃后第一次出招前的停顿
 };
 
 export const BREAK = { bonusHpFraction: 0.05, stun: 2, vulnerability: 0.25, duration: 4 };
@@ -156,9 +170,13 @@ export const WAVES = [
     const boar = index < 5 ? 0 : index < 13 ? 1 : 2;
     const caster = index < 7 ? 0 : index < 15 ? 1 : 2;
     const guardian = index === 19 ? 1 : 0;
-    const roster = guardian ? { slime: 0, skeleton: 0, archer: 0, zealot: 0, boar: 0, caster: 0 }
-        : { slime: enemies.slime - archer - zealot, skeleton: enemies.skeleton - boar - caster, archer, zealot, boar, caster };
-    return { ...roster, guardian,
+    const crownlessBody = index === 9 ? 1 : 0;
+    const boss = guardian || crownlessBody;
+    const roster = boss
+        ? { slime: 0, skeleton: 0, archer: 0, zealot: 0, boar: 0, caster: 0, crownlessBody: 0, crownlessHead: 0 }
+        : { slime: enemies.slime - archer - zealot, skeleton: enemies.skeleton - boar - caster, archer, zealot, boar, caster,
+            crownlessBody: 0, crownlessHead: 0 };
+    return { ...roster, guardian, crownlessBody,
         hpScale: 1 + early * 0.06 + late * 0.035, damageScale: 1 + early * 0.05 + late * 0.025 };
 });
 

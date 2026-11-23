@@ -195,6 +195,23 @@ html.game-rotated .game-settings label {
 html.game-rotated .game-settings select { min-height: 42px; }
 html.game-rotated .game-settings-hint { margin: 0 0 8px; }
 
+/* 主菜单的设置有四行，竖屏旋转后只剩手机宽度那么高，拆成两列并省掉说明文字才放得下。 */
+html.game-rotated .game-settings:has(select[name="controls"]) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 14px;
+    padding: 14px;
+}
+
+html.game-rotated .game-settings:has(select[name="controls"]) h2,
+html.game-rotated .game-settings:has(select[name="controls"]) form {
+    grid-column: 1 / -1;
+}
+
+html.game-rotated .game-settings:has(select[name="controls"]) h2 { margin-bottom: 2px; }
+html.game-rotated .game-settings:has(select[name="controls"]) label { margin-bottom: 0; }
+html.game-rotated .game-settings:has(select[name="controls"]) .game-settings-hint { display: none; }
+
 html.game-rotated-cw .game-settings { transform: translate(-50%, -50%) rotate(90deg); }
 html.game-rotated-ccw .game-settings { transform: translate(-50%, -50%) rotate(-90deg); }
 

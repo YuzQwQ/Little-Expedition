@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { hasWarriorTextures, loadWarriorTextures, WarriorVisual } from '../../character/warriorVisual';
-import { COLORS, button, heading, label, panel, relicRows } from '../ui';
+import { COLORS, button, coinIcon, heading, label, panel, relicIcon } from '../ui';
 import { ENEMIES, RELICS, VIEW, WAVES, type RelicId } from '../config';
 import { SPECIAL_PATTERNS, isSpecialEnemy, type SpecialEnemyKind } from '../enemyPatterns';
 import { DIFFICULTIES, isTrialUnlocked, type Difficulty } from '../difficulty';
@@ -118,7 +118,12 @@ export class ResultScene extends Phaser.Scene {
         if (result.finalReward) {
             const reward = result.finalReward.kind === 'relic'
                 ? RELICS[result.finalReward.id].label : `+${result.finalReward.amount} 金币`;
-            label(this, center, 115, `✦  最终强化奖励 · ${reward}`, 21, tone).setOrigin(0.5);
+            const title = label(this, center, 115, `最终强化奖励 · ${reward}`, 21, tone).setOrigin(0.5);
+            if (result.finalReward.kind === 'relic') {
+                relicIcon(this, center - title.width / 2 - 23, 115, result.finalReward.id, 38);
+            } else {
+                coinIcon(this, center - title.width / 2 - 19, 115, 30);
+            }
         } else {
             label(this, center, 115, result.victory ? '✦' : '◇', 40, tone).setOrigin(0.5);
         }
@@ -135,10 +140,21 @@ export class ResultScene extends Phaser.Scene {
         label(this, 832, 270, '结算金币', 18, COLORS.muted).setOrigin(0.5);
         heading(this, 448, 313, `${minutes}:${seconds}`, 35).setOrigin(0.5);
         heading(this, center, 313, String(result.kills), 35).setOrigin(0.5);
-        heading(this, 832, 313, String(result.gold), 35).setOrigin(0.5);
+        const gold = heading(this, 846, 313, String(result.gold), 35).setOrigin(0.5);
+        coinIcon(this, 825 - gold.width / 2, 313, 32);
         label(this, center, 366, `已获得遗物 · ${result.relics.length}`, 17, COLORS.muted).setOrigin(0.5);
-        label(this, center, 395, relicRows(result.relics, 7, '无'), 17, tone)
-            .setOrigin(0.5, 0).setAlign('center').setLineSpacing(4);
+        if (!result.relics.length) label(this, center, 406, '无', 17, tone).setOrigin(0.5);
+        const columns = 7;
+        const rows = Math.ceil(result.relics.length / columns);
+        const rowHeight = Math.min(28, 160 / Math.max(1, rows));
+        result.relics.forEach((id, index) => {
+            const row = Math.floor(index / columns);
+            const count = Math.min(columns, result.relics.length - row * columns);
+            const x = center + (index % columns - (count - 1) / 2) * 101;
+            const y = 393 + (row + 0.5) * rowHeight;
+            relicIcon(this, x - 38, y, id, Math.min(24, rowHeight));
+            label(this, x - 24, y, RELICS[id].label, 13, tone).setOrigin(0, 0.5);
+        });
         if (result.testEnemy) {
             button(this, 390, 576, '重测该敌人', () => this.scene.start('battle', { testEnemy: result.testEnemy }));
             button(this, 660, 576, '返回调试场', () => this.scene.start('menu'));

@@ -3,8 +3,8 @@ import { ARCHER, ENEMIES, ENEMY_MOVEMENT, FIELD, OBSTACLES, type EnemyKind } fro
 import { offsetAlong, routeAroundWalls } from './enemyMovement';
 import { cancelArcherAim, createArcherState, updateArcher, type ArcherState } from './archer';
 import { firstWallContact } from './enemyProjectiles';
-import { SPECIAL_PATTERNS, isSpecialEnemy } from './enemyPatterns';
-import { advanceSpecial, cancelSpecialAttack, changeGuardianPhase, createSpecialState, type SpecialEnemyState } from './specialEnemy';
+import { SPECIAL_PATTERNS, isBossKind, isSpecialEnemy, type PatternSpec } from './enemyPatterns';
+import { advanceSpecial, cancelSpecialAttack, changeBossPhase, createSpecialState, type SpecialEnemyState } from './specialEnemy';
 import { createVital, direction, distance, inSector, recoverPoise, type Point } from './combat';
 import { EnemyStatuses } from './statuses';
 import type { BattleView, EnemyView } from './view';
@@ -50,7 +50,7 @@ export function createEnemy(view: BattleView, scene: Phaser.Scene, kind: EnemyKi
     const bars = scene.add.graphics().setDepth(12);
     view.world.add(bars);
     return { kind, sprite, bars, vital: createVital(Math.round(spec.hp * hpScale), spec.poise, spec.resistances),
-        statuses: new EnemyStatuses(spec.statusResistance, kind === 'guardian' ? 'boss' : spec.poise ? 'medium' : 'small'),
+        statuses: new EnemyStatuses(spec.statusResistance, isBossKind(kind) ? 'boss' : spec.poise ? 'medium' : 'small'),
         state: 'idle', heading: 0, started: 0, nextAttack: 0, movementOffset: slot * 0.31,
         archer: kind === 'archer' ? createArcherState(time, slot) : undefined,
         special: isSpecialEnemy(kind) ? createSpecialState(kind, time, slot) : undefined };
@@ -75,17 +75,18 @@ export function updateSpecialEnemy(enemy: Enemy, at: Point, player: Point, time:
     const state = enemy.special!;
     const { vital, sprite } = enemy;
     recoverPoise(vital, time);
-    changeGuardianPhase(state, vital.hp, vital.maxHp, time);
+    changeBossPhase(state, vital.hp, vital.maxHp, time);
     if (vital.stunUntil) {
         cancelSpecialAttack(state, vital.stunUntil);
         sprite.setVelocity(0);
         return;
     }
     const spellRadius = SPECIAL_PATTERNS.caster.attacks[0][0].projectile.radius;
-    const sight = firstWallContact(at, player, OBSTACLES, state.kind === 'caster' ? spellRadius : 0) === Infinity;
+    const pattern: PatternSpec = SPECIAL_PATTERNS[state.kind];
+    const sight = firstWallContact(at, player, OBSTACLES, pattern.keepDistance ? spellRadius : 0) === Infinity;
     const gap = distance(at, player);
     const spacing = ENEMY_MOVEMENT;
-    if (state.kind === 'caster' && !state.active) {
+    if (pattern.keepDistance && !state.active) {
         if (gap >= spacing.casterRetreatReset) enemy.retreatUntil = undefined;
         if (gap < spacing.casterMinDistance) {
             enemy.retreatUntil ??= time + spacing.casterRetreatDuration;
@@ -116,7 +117,7 @@ export function updateSpecialEnemy(enemy: Enemy, at: Point, player: Point, time:
         moveEnemy(enemy, at, player, time, time < vital.knockUntil ? vital.knock : { x: 0, y: 0 });
     } else if (!active && !event && !state.steps.length && state.kind !== 'guardian') {
         reposition(enemy, at, heading, gap, time, { x: 0, y: 0 },
-            state.kind === 'caster' ? 0 : SPECIAL_PATTERNS[state.kind].engage + spacing.meleeSpacing);
+            pattern.keepDistance ? 0 : pattern.engage + spacing.meleeSpacing);
     } else {
         sprite.setVelocity(0);
     }

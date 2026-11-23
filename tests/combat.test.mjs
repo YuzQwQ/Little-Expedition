@@ -8,14 +8,15 @@ import {
 import { ARCHER, ENEMIES, FROST, RELICS, RELIC_FACTIONS, WAVES, WARRIOR } from '../src/game/config.ts';
 import { cancelArcherAim, createArcherState, updateArcher } from '../src/game/archer.ts';
 import { advanceEnemyProjectile, launchEnemyProjectile } from '../src/game/enemyProjectiles.ts';
-import { GUARDIAN_PHASE, SPECIAL_PATTERNS } from '../src/game/enemyPatterns.ts';
-import { advanceSpecial, cancelSpecialAttack, changeGuardianPhase, createSpecialState } from '../src/game/specialEnemy.ts';
+import { BOSS_PHASES, SPECIAL_PATTERNS } from '../src/game/enemyPatterns.ts';
+import { advanceSpecial, cancelSpecialAttack, changeBossPhase, createSpecialState } from '../src/game/specialEnemy.ts';
 import { RunRelics } from '../src/game/relics.ts';
 import { calculateStatusChance, closestStatusTargets, EnemyStatuses, spreadPoison } from '../src/game/statuses.ts';
 import { REFRESH_COST, RunEconomy, blessingChoices, eventCardsAfter, hasFutureShop, isSupplyStop, killGold, takeRelic, waveSpec } from '../src/game/expedition.ts';
 import { WarriorBlock, WarriorResolve } from '../src/game/warrior.ts';
 import { MobileInput, stickVector } from '../src/game/mobileControls.ts';
 import { normalizeSettings, rotationDegrees, usesMobileControls } from '../src/game/settings.ts';
+import { normalizeTips } from '../src/game/tips.ts';
 
 const origin = { x: 0, y: 0 };
 const right = { x: 60, y: 0 };
@@ -33,11 +34,14 @@ test('enemy navigation takes successive corners around a wall and resumes direct
     assert.equal(routeAroundWalls(second, goal, 19), goal);
 });
 
-test('screen preferences validate stored modes, rotation and zoom, and auto mode uses the primary pointer', () => {
-    assert.deepEqual(normalizeSettings({ controls: 'invalid', zoom: 10 }), { controls: 'auto', zoom: 1, rotate: 'none' });
-    assert.deepEqual(normalizeSettings({ controls: 'mobile', zoom: 1.4 }), { controls: 'mobile', zoom: 1.4, rotate: 'none' });
-    assert.deepEqual(normalizeSettings({ rotate: 'cw' }), { controls: 'auto', zoom: 1, rotate: 'cw' });
-    assert.deepEqual(normalizeSettings({ rotate: 'sideways' }), { controls: 'auto', zoom: 1, rotate: 'none' });
+test('screen preferences validate stored modes, rotation, sound and zoom, and auto mode uses the primary pointer', () => {
+    assert.deepEqual(normalizeSettings({ controls: 'invalid', zoom: 10 }),
+        { controls: 'auto', zoom: 1, rotate: 'none', sound: true });
+    assert.deepEqual(normalizeSettings({ controls: 'mobile', zoom: 1.4 }),
+        { controls: 'mobile', zoom: 1.4, rotate: 'none', sound: true });
+    assert.deepEqual(normalizeSettings({ rotate: 'cw' }), { controls: 'auto', zoom: 1, rotate: 'cw', sound: true });
+    assert.deepEqual(normalizeSettings({ rotate: 'sideways' }), { controls: 'auto', zoom: 1, rotate: 'none', sound: true });
+    assert.equal(normalizeSettings({ sound: false }).sound, false);
     assert.equal(rotationDegrees('cw'), 90);
     assert.equal(rotationDegrees('ccw'), -90);
     assert.equal(rotationDegrees('none'), 0);
@@ -45,6 +49,13 @@ test('screen preferences validate stored modes, rotation and zoom, and auto mode
     assert.equal(usesMobileControls('auto', false), false);
     assert.equal(usesMobileControls('desktop', true), false);
     assert.equal(usesMobileControls('mobile', false), true);
+});
+
+test('tutorial flags keep only known tip ids so old storage cannot break the run', () => {
+    assert.deepEqual(normalizeTips(null), []);
+    assert.deepEqual(normalizeTips('guard'), []);
+    assert.deepEqual(normalizeTips(['guard', 'nope', 'supply']), ['guard', 'supply']);
+    assert.deepEqual(normalizeTips(['ultimate']), ['ultimate']);
 });
 
 test('stick input on a rotated frame still points where the player drags', () => {
@@ -291,8 +302,8 @@ test('normal waves grow in count and wave 20 fields only a scaling guardian', ()
         const before = WAVES[i - 1], next = WAVES[i];
         const count = spec => Object.keys(ENEMIES).reduce((sum, kind) => sum + spec[kind], 0);
         assert.ok(Object.keys(ENEMIES).every(kind => next[kind] >= 0));
-        if (i < 19) assert.ok(count(next) >= count(before));
-        else assert.equal(count(next), 1);
+        if (i === 9 || i === 19) assert.equal(count(next), 1);
+        else if (i < 19) assert.ok(count(next) >= count(before));
         assert.ok(next.hpScale > before.hpScale && next.damageScale > before.damageScale);
         for (const kind of ['slime', 'skeleton', 'archer']) {
             assert.ok(killGold(kind, i + 1) >= killGold(kind, i));
@@ -302,6 +313,10 @@ test('normal waves grow in count and wave 20 fields only a scaling guardian', ()
     assert.equal(WAVES.findIndex(wave => wave.boar) + 1, 6);
     assert.equal(WAVES.findIndex(wave => wave.caster) + 1, 8);
     assert.equal(WAVES.at(-1).guardian, 1);
+    assert.equal(WAVES[9].crownlessBody, 1);
+    assert.equal(WAVES.filter(wave => wave.crownlessBody).length, 1);
+    // 残魂由场景在铠甲生成时一起带出，波次表里永远为 0
+    assert.equal(WAVES.every(wave => wave.crownlessHead === 0), true);
     assert.equal(killGold('slime', 1), 3);
     assert.equal(killGold('slime', 20), 20);
     assert.equal(killGold('skeleton', 1), 8);
@@ -359,7 +374,7 @@ test('a challenge adds 25% HP and a single slime without changing enemy damage',
         const challenge = waveSpec(wave, true);
         assert.equal(challenge.hpScale, base.hpScale * 1.25);
         assert.equal(challenge.damageScale, base.damageScale);
-        assert.equal(challenge.slime, base.slime + (base.guardian ? 0 : 1));
+        assert.equal(challenge.slime, base.slime + (base.guardian || base.crownlessBody ? 0 : 1));
         assert.equal(challenge.skeleton, base.skeleton);
         assert.equal(challenge.archer, base.archer);
     }
@@ -434,11 +449,11 @@ test('guardian cancels its tell exactly once below half HP and unlocks three dis
     const boss = createSpecialState('guardian', 0, 0);
     advanceSpecial(boss, origin, right, boss.readyAt, true);
     assert.equal(boss.active.attack.kind, 'slam');
-    assert.equal(changeGuardianPhase(boss, 50, 100, 1), false);
-    assert.equal(changeGuardianPhase(boss, 49, 100, 1), true);
+    assert.equal(changeBossPhase(boss, 50, 100, 1), false);
+    assert.equal(changeBossPhase(boss, 49, 100, 1), true);
     assert.equal(boss.active, undefined);
-    assert.equal(changeGuardianPhase(boss, 25, 100, 1.2), false);
-    assert.equal(boss.readyAt, 1 + GUARDIAN_PHASE.transition);
+    assert.equal(changeBossPhase(boss, 25, 100, 1.2), false);
+    assert.equal(boss.readyAt, 1 + BOSS_PHASES.guardian.transition);
     let time = boss.readyAt;
     for (let i = 0; i < 3; i++) {
         const marked = { x: 55, y: i * 15 };
@@ -452,6 +467,48 @@ test('guardian cancels its tell exactly once below half HP and unlocks three dis
     assert.equal(boss.phase, 2);
     assert.equal(SPECIAL_PATTERNS.guardian.attacks[2][0].headings.length, 12);
     assert.equal(killGold('guardian', 20), 50);
+});
+
+test('the crownless body chains three cones and its ground cut fires along a line', () => {
+    const body = createSpecialState('crownlessBody', 0, 0);
+    assert.equal(SPECIAL_PATTERNS.crownlessBody.attacks[0].length, 3);
+    assert.equal(SPECIAL_PATTERNS.crownlessBody.keepDistance, undefined);
+    advanceSpecial(body, origin, right, body.readyAt, true);
+    assert.equal(body.active.attack.kind, 'cone');
+    assert.equal(body.active.attack.radius, 104);
+    // 三段连招逐段接上，没有收招间隙
+    let time = body.active.deadline;
+    assert.equal(advanceSpecial(body, origin, right, time, true).kind, 'execute');
+    advanceSpecial(body, origin, right, time, true);
+    assert.equal(body.active.attack.radius, 110);
+    time = body.active.deadline;
+    advanceSpecial(body, origin, right, time, true);
+    advanceSpecial(body, origin, right, time, true);
+    assert.equal(body.active.attack.radius, 124);
+    time = body.active.deadline;
+    advanceSpecial(body, origin, right, time, true);
+    assert.ok(body.readyAt > time);
+
+    // 裂地剑气：一次判定射出，四段依次爆开
+    const cutter = createSpecialState('crownlessBody', 0, 0);
+    cutter.steps = SPECIAL_PATTERNS.crownlessBody.attacks[1];
+    const cut = SPECIAL_PATTERNS.crownlessBody.attacks[1][0];
+    assert.equal(cut.kind, 'line');
+    assert.equal(cut.steps, 6);
+    // 爆点间距必须小于判定宽度，否则站在直线上反而打不到
+    assert.ok(cut.length / cut.steps < cut.width * 2);
+    assert.ok(cut.length > cut.width);
+    advanceSpecial(cutter, origin, right, cutter.readyAt, true);
+    assert.equal(cutter.active.attack.length, cut.length);
+    const fired = advanceSpecial(cutter, origin, right, cutter.active.deadline, true);
+    assert.equal(fired.kind, 'execute');
+    assert.equal(fired.active.attack.kind, 'line');
+    assert.equal(cutter.active, undefined);
+
+    // 残魂保持距离放冷箭，不贴身
+    assert.equal(SPECIAL_PATTERNS.crownlessHead.keepDistance, true);
+    assert.equal(SPECIAL_PATTERNS.crownlessHead.attacks[1][0].headings.length, 4);
+    assert.equal(killGold('crownlessBody', 10), killGold('skeleton', 10));
 });
 
 test('enemy shots sweep against walls and moving players and can pierce once', () => {
@@ -489,6 +546,23 @@ test('enemy projectiles fly past the old range, survive an immune contact, and e
     const vertical = launchEnemyProjectile({ x: 100, y: 80 }, -Math.PI / 2, 12, ARCHER.projectile);
     assert.equal(advanceEnemyProjectile(vertical, 0.5, [], arena, target, target, 10, () => assert.fail('Arrow missed')), false);
 });
+test('only event gold and spending reach the gold listener, kill loot stays silent', () => {
+    const economy = new RunEconomy();
+    const changes = [];
+    economy.onGold = change => changes.push(change);
+    assert.equal(economy.collectKill('slime', 1), 3);
+    assert.deepEqual(changes, []);
+    economy.addGold(40);
+    assert.deepEqual(changes, [{ kind: 'earn', amount: 40 }]);
+    assert.equal(economy.spendGold(15), true);
+    assert.deepEqual(changes.at(-1), { kind: 'spend', amount: 15 });
+    assert.equal(economy.spendGold(9999), false);
+    assert.equal(economy.spendGold(0), true);
+    assert.equal(changes.length, 2);
+    economy.clear();
+    assert.equal(changes.length, 2);
+});
+
 test('shop-bound reward cards include guaranteed gold and a relic or cash bonus', () => {
     const economy = new RunEconomy();
     const held = new Set(['whetstone']);

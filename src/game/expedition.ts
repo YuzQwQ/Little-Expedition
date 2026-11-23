@@ -65,13 +65,14 @@ export function hasFutureShop(clearedWave: number) {
 export function waveSpec(wave: number, challenge: boolean) {
     const base = WAVES[wave - 1];
     if (!challenge) return base;
-    return { ...base, slime: base.slime + (base.guardian ? 0 : CHALLENGE_EXTRA_SLIMES),
+    return { ...base, slime: base.slime + (base.guardian || base.crownlessBody ? 0 : CHALLENGE_EXTRA_SLIMES),
         hpScale: base.hpScale * (1 + CHALLENGE_HP_BONUS) };
 }
 
 export function killGold(kind: EnemyKind, wave: number) {
     const band = GOLD_BANDS.find(band => wave <= band.through) ?? GOLD_BANDS[GOLD_BANDS.length - 1];
-    return kind === 'skeleton' || kind === 'caster' || kind === 'boar' || kind === 'guardian' ? band.skeleton : band.slime;
+    return kind === 'skeleton' || kind === 'caster' || kind === 'boar' || kind === 'guardian'
+        || kind === 'crownlessBody' || kind === 'crownlessHead' ? band.skeleton : band.slime;
 }
 
 export function cashCardPayout(wave: number) {
@@ -108,10 +109,14 @@ export function takeRelic(pool: RelicId[], random: () => number, held?: Readonly
     return pool.splice(index, 1)[0];
 }
 
+export type GoldChange = { kind: 'earn' | 'spend'; amount: number };
+
 export class RunEconomy {
     private balance = 0;
     private slots: (ShopOffer | null)[] = [];
     private supply?: ShopSupply;
+    /** Fires for event income and spending. Kill loot stays silent on purpose; it is far too frequent to chime. */
+    onGold?: (change: GoldChange) => void;
 
     get gold() { return this.balance; }
     get offers(): readonly (Readonly<ShopOffer> | null)[] { return this.slots; }
@@ -119,17 +124,20 @@ export class RunEconomy {
 
     collectKill(kind: EnemyKind, wave: number) {
         const amount = killGold(kind, wave);
-        this.addGold(amount);
+        this.addGold(amount, 'kill');
         return amount;
     }
 
-    addGold(amount: number) {
-        if (Number.isSafeInteger(amount) && amount >= 0) this.balance += amount;
+    addGold(amount: number, reason: 'event' | 'kill' = 'event') {
+        if (!Number.isSafeInteger(amount) || amount < 0) return;
+        this.balance += amount;
+        if (reason === 'event' && amount > 0) this.onGold?.({ kind: 'earn', amount });
     }
 
     spendGold(amount: number) {
         if (!Number.isSafeInteger(amount) || amount < 0 || this.balance < amount) return false;
         this.balance -= amount;
+        if (amount > 0) this.onGold?.({ kind: 'spend', amount });
         return true;
     }
 

@@ -14,7 +14,7 @@ import {
     cashCardPayout, hasFutureShop,
     type EventCard, type EventReward, type ShopOffer, type ShopSupply,
 } from './expedition';
-import { COLORS, FACTION_COLORS, button, factionBadge, heading, label, panel } from './ui';
+import { COLORS, FACTION_COLORS, button, coinIcon, coinLabel, factionBadge, heading, label, panel, relicIcon } from './ui';
 
 type TextureKind = EnemyKind | 'warrior';
 const ACTOR_FRAME = 72;
@@ -108,6 +108,49 @@ export function ensureTextures(scene: Phaser.Scene) {
     polygon(art, 0xc78f77, [[55, 45], [62, 56], [55, 67], [48, 56]]);
     art.generateTexture('actor-guardian', 110, 104);
 
+    art.clear();
+    art.fillStyle(0x0d191c, 0.42).fillEllipse(52, 94, 64, 12);
+    // 巨剑（右侧，窄刃 + 护手 + 握柄）
+    polygon(art, outline, [[76, 24], [86, 20], [91, 56], [81, 58]]);
+    polygon(art, 0xdfe5e0, [[79, 27], [84, 24], [88, 54], [82, 56]]);
+    art.fillStyle(outline).fillRect(72, 55, 24, 6);
+    art.fillStyle(0xb99a63).fillRect(75, 57, 18, 2);
+    art.fillStyle(outline).fillRoundedRect(80, 60, 7, 11, 2);
+    // 腿与靴
+    art.fillStyle(outline).fillRoundedRect(37, 68, 14, 24, 4).fillRoundedRect(53, 68, 14, 24, 4);
+    art.fillStyle(0x3a464b).fillRoundedRect(39, 74, 10, 15, 3).fillRoundedRect(55, 74, 10, 15, 3);
+    // 躯干、腰带与垂布
+    polygon(art, outline, [[33, 42], [71, 42], [68, 62], [64, 76], [40, 76], [36, 62]]);
+    polygon(art, 0x5c6d74, [[37, 45], [67, 45], [65, 62], [62, 72], [42, 72], [39, 62]]);
+    polygon(art, outline, [[42, 62], [63, 62], [59, 92], [46, 92]]);
+    polygon(art, 0x7d4a44, [[45, 64], [60, 64], [57, 88], [48, 88]]);
+    art.fillStyle(0xb99a63).fillRect(49, 66, 7, 3);
+    art.fillStyle(0xb99a63).fillRect(36, 61, 32, 5);
+    // 斜切的肩甲，避免圆形被读成眼睛
+    polygon(art, outline, [[24, 45], [38, 39], [39, 52], [27, 55]]);
+    polygon(art, 0x7c8a8f, [[27, 46], [37, 42], [37, 50], [29, 53]]);
+    polygon(art, outline, [[80, 45], [66, 39], [65, 52], [77, 55]]);
+    polygon(art, 0x7c8a8f, [[77, 46], [67, 42], [67, 50], [75, 53]]);
+    // 断颈：领口 + 向上飘的残魂
+    art.fillStyle(outline).fillRoundedRect(45, 26, 14, 16, 3);
+    art.fillStyle(0x211a2b).fillRoundedRect(48, 29, 8, 10, 2);
+    polygon(art, 0xb489f0, [[49, 30], [52, 12], [55, 30]]);
+    art.fillStyle(0xdcc4ff).fillCircle(52, 26, 3);
+    art.generateTexture('actor-crownlessBody', 104, 104);
+
+    art.clear();
+    art.fillStyle(0xb489f0, 0.16).fillCircle(28, 28, 27);
+    art.fillStyle(outline).fillCircle(28, 27, 15);
+    art.fillStyle(0xe8e0cf).fillCircle(28, 27, 12);
+    art.fillStyle(outline).fillCircle(23, 26, 4).fillCircle(33, 26, 4);
+    art.fillStyle(0xc79bff).fillCircle(23, 26.5, 2).fillCircle(33, 26.5, 2);
+    art.fillStyle(outline).fillRoundedRect(22, 33, 12, 7, 2);
+    art.fillStyle(0xe8e0cf).fillRect(25, 34, 6, 4);
+    polygon(art, outline, [[15, 15], [21, 3], [28, 12], [35, 3], [41, 15]]);
+    polygon(art, 0xd8b978, [[18, 13], [22, 6], [28, 13], [34, 6], [38, 13]]);
+    art.fillStyle(0x6b6f5c).fillRect(15, 13, 26, 4);
+    art.generateTexture('actor-crownlessHead', 56, 56);
+
     const skeletonScale = SKELETON_FRAME / ACTOR_FRAME;
     art.clear().scaleCanvas(skeletonScale, skeletonScale);
     art.fillStyle(0x0d191c, 0.45).fillEllipse(36, 61, 48, 12);
@@ -172,7 +215,8 @@ export class BattleView {
     private readonly gold: Phaser.GameObjects.Text;
     private readonly heldTitle: Phaser.GameObjects.Text;
     private readonly blessing: Phaser.GameObjects.Text;
-    private readonly held: Phaser.GameObjects.Text[];
+    private readonly held: Phaser.GameObjects.Container;
+    private heldKey?: string;
     private readonly charge: Phaser.GameObjects.Text;
     private readonly arcaneCharge: Phaser.GameObjects.Text;
     private readonly dodge: Phaser.GameObjects.Text;
@@ -182,6 +226,8 @@ export class BattleView {
     private readonly debug: Phaser.GameObjects.Text;
     private overlay?: Phaser.GameObjects.Container;
     private banner?: Phaser.GameObjects.Container;
+    private tip?: Phaser.GameObjects.Container;
+    private noticeBanner?: Phaser.GameObjects.Container;
     private warrior?: WarriorVisual;
     private warriorMotion?: Motion;
     private warriorMotionStarted = 0;
@@ -233,10 +279,10 @@ export class BattleView {
         this.hp = label(scene, 43, 54 + healthOffset, '', 29).setFontStyle('bold');
         this.shield = label(scene, 283, 83 + healthOffset, '', 15, COLORS.gold).setOrigin(1, 0);
         this.wave = label(scene, 640, 54, '', 21).setOrigin(0.5).setFontStyle('bold');
-        this.gold = label(scene, 640, 108, '', 18, COLORS.gold).setOrigin(0.5).setFontStyle('bold');
+        this.gold = label(scene, 651, 108, '', 18, COLORS.gold).setOrigin(0.5).setFontStyle('bold');
         this.heldTitle = label(scene, 962, 36, '', 15, COLORS.gold);
         this.blessing = label(scene, 1237, 182, '', 15).setOrigin(1, 0);
-        this.held = [962, 1103].map(x => label(scene, x, 63, '', 14).setLineSpacing(1));
+        this.held = scene.add.container();
         this.dodge = label(scene, statusX + 20, 639, '', 16, COLORS.muted).setFontStyle('bold');
         this.resolve = label(scene, statusX + 20, 597, '', 16, COLORS.gold).setFontStyle('bold');
         this.charge = label(scene, 44, 146 + healthOffset, '', 17, COLORS.gold);
@@ -246,7 +292,8 @@ export class BattleView {
             healthPanel, wavePanel, goldPanel, relicPanel, statusPanel,
             label(scene, 44, 33 + healthOffset, '战士  /  生命', 15, COLORS.muted),
             this.heldTitle, this.blessing,
-            this.hp, this.shield, this.wave, this.gold, ...this.held, this.dodge, this.resolve, this.charge, this.arcaneCharge,
+            this.hp, this.shield, this.wave, coinIcon(scene, 594, 108, 23), this.gold,
+            this.held, this.dodge, this.resolve, this.charge, this.arcaneCharge,
             this.meter, this.debug,
         ]);
         if (!mobile) this.hud.add(label(scene, 1250, 675, 'Esc  暂停', 15, COLORS.muted).setOrigin(1, 0));
@@ -386,10 +433,9 @@ export class BattleView {
     }
 
     showGold(at: Point, amount: number) {
-        const text = label(this.scene, at.x, at.y - 65, `+${amount} 金币`, 16, COLORS.gold)
-            .setOrigin(0.5).setFontStyle('bold').setStroke('#17272e', 4).setDepth(14);
-        this.world.add(text);
-        this.scene.tweens.add({ targets: text, y: '-=23', alpha: 0, duration: 700, onComplete: () => text.destroy() });
+        const pickup = coinLabel(this.scene, at.x, at.y - 65, `+${amount}`, 16, true).setDepth(14);
+        this.world.add(pickup);
+        this.scene.tweens.add({ targets: pickup, y: '-=23', alpha: 0, duration: 700, onComplete: () => pickup.destroy() });
     }
 
     showPerfectGuard(at: Point) {
@@ -474,6 +520,11 @@ export class BattleView {
             return;
         } else if (attack.kind === 'cone') {
             sector(this.cues, origin, heading, attack.radius, attack.degrees, color, opacity);
+        } else if (attack.kind === 'line') {
+            const dx = Math.cos(heading), dy = Math.sin(heading);
+            const x = origin.x + dx * attack.length, y = origin.y + dy * attack.length;
+            this.cues.lineStyle(attack.width * 2, color, opacity * 0.55).lineBetween(origin.x, origin.y, x, y);
+            this.cues.lineStyle(2, color, 0.9).lineBetween(origin.x, origin.y, x, y);
         } else if (attack.kind === 'slam') {
             this.cues.fillStyle(color, opacity).fillCircle(origin.x, origin.y, attack.radius);
             this.cues.lineStyle(2, color, 0.9).strokeCircle(origin.x, origin.y, attack.radius)
@@ -564,9 +615,23 @@ export class BattleView {
         this.heldTitle.setText(ids.size > 9 ? `持有遗物 · ${ids.size} 件（最近 9 件）` : `持有遗物 · ${ids.size} 件`);
         this.blessing.setText(blessing ? `远征祝福 · ${RELIC_FACTION_NAMES[blessing]} ×${BLESSING_WEIGHT}` : '');
         if (blessing) this.blessing.setColor(FACTION_COLORS[blessing]);
-        const held = [...ids].slice(-9).map(id => `${RELIC_FACTION_NAMES[RELIC_FACTIONS[id]]} · ${RELICS[id].label}`);
-        this.held[0].setText(held.filter((_, index) => index % 2 === 0).join('\n') || '暂无遗物');
-        this.held[1].setText(held.filter((_, index) => index % 2 === 1).join('\n'));
+        const held = [...ids].slice(-9);
+        const heldKey = held.join(',');
+        if (heldKey !== this.heldKey) {
+            this.heldKey = heldKey;
+            this.held.removeAll(true);
+            if (!held.length) this.held.add(label(this.scene, 962, 63, '暂无遗物', 14, COLORS.muted));
+            held.forEach((id, index) => {
+                const x = 970 + (index % 2) * 141;
+                const y = 70 + Math.floor(index / 2) * 21;
+                const faction = RELIC_FACTIONS[id];
+                this.held.add([
+                    relicIcon(this.scene, x, y, id, 21),
+                    label(this.scene, x + 13, y, `${RELIC_FACTION_NAMES[faction]} · ${RELICS[id].label}`,
+                        13, FACTION_COLORS[faction]).setOrigin(0, 0.5),
+                ]);
+            });
+        }
         this.charge.setText(buffs);
         const shortcut = this.mobile ? '' : 'Space  ';
         this.dodge.setText(shortcut + (dodge > 0 ? `闪避 · ${dodge.toFixed(1)} 秒` : '闪避就绪'));
@@ -616,18 +681,96 @@ export class BattleView {
         });
     }
 
+    get tipVisible() { return this.tip !== undefined; }
+
+    /** 一次性引导：底部提示条，不拦输入，几秒后自己淡出。 */
+    tipOverlay(title: string, body: string, hold = 9000) {
+        this.hideTip();
+        const scene = this.scene;
+        const wide = this.mobile;
+        // 手机横屏时画布只有六成，卡片和字号要一起放大，不然字只有 10 个 CSS px。
+        const width = wide ? 868 : 700;
+        const height = wide ? 158 : 108;
+        const inset = wide ? 34 : 24;
+        const card = panel(scene, 0, 0, width, height, 0x101f24, 0x8f7f54).setAlpha(0.97);
+        const accent = scene.add.graphics();
+        accent.fillStyle(0xf0c890, 1).fillRoundedRect(inset - 14, wide ? 26 : 18, 4, height - (wide ? 52 : 36), 2);
+        const titleText = label(scene, inset, wide ? 24 : 18, title, wide ? 27 : 18, COLORS.gold).setFontStyle('bold');
+        const bodyText = label(scene, inset, wide ? 66 : 46, body, wide ? 27 : 19)
+            .setLineSpacing(wide ? 12 : 7)
+            .setWordWrapWidth(width - inset * 2, true);
+        const tip = scene.add.container((VIEW.width - width) / 2, wide ? 404 : 556, [card, accent, titleText, bodyText])
+            .setDepth(9).setAlpha(0);
+        this.tip = tip;
+        this.hud.add(tip);
+        scene.tweens.add({ targets: tip, alpha: 1, duration: 180 });
+        scene.tweens.add({
+            targets: tip, alpha: 0, delay: hold, duration: 320,
+            onComplete: () => { if (this.tip === tip) this.hideTip(); },
+        });
+    }
+
+    hideTip() {
+        if (!this.tip) return;
+        this.scene.tweens.killTweensOf(this.tip);
+        this.tip.destroy();
+        this.tip = undefined;
+    }
+
+    /** 一行居中播报，用于 Boss 换阶段这类不打断战斗的提示。 */
+    notice(text: string) {
+        const scene = this.scene;
+        const width = this.mobile ? 430 : 340;
+        const bar = panel(scene, -width / 2, -30, width, 60, 0x2b2226, 0xc08a5a);
+        const line = heading(scene, 0, 0, text, this.mobile ? 30 : 24).setOrigin(0.5);
+        this.noticeBanner?.destroy();
+        const banner = scene.add.container(640, 178, [bar, line]).setDepth(4).setAlpha(0);
+        this.noticeBanner = banner;
+        this.hud.add(banner);
+        scene.tweens.add({ targets: banner, alpha: 1, duration: 160 });
+        scene.tweens.add({
+            targets: banner, alpha: 0, delay: 1500, duration: 400,
+            onComplete: () => {
+                if (this.noticeBanner === banner) this.noticeBanner = undefined;
+                banner.destroy();
+            },
+        });
+    }
+
     hideOverlay() {
         this.overlay?.destroy();
         this.overlay = undefined;
     }
 
-    pauseOverlay(resume: () => void) {
+    pauseOverlay(actions: { resume: () => void; settings: () => void; quit: () => void }) {
         this.hideOverlay();
+        // 手机上按钮会被缩到约六成，这里放大一档，避免「设置」和「退出本局」挤在一起点错。
+        const height = this.mobile ? 76 : 56;
+        const step = this.mobile ? 90 : 72;
+        const first = this.mobile ? 308 : 316;
+        const bottom = this.mobile ? 590 : 530;
         this.overlay = this.scene.add.container(0, 0, [
             this.scene.add.rectangle(640, 360, VIEW.width, VIEW.height, 0x0a151b, 0.73),
-            panel(this.scene, 408, 223, 464, 267),
-            heading(this.scene, 640, 310, '战斗暂停', 43).setOrigin(0.5),
-            button(this.scene, 525, 382, '继续游戏', resume),
+            panel(this.scene, 408, 190, 464, bottom - 190),
+            heading(this.scene, 640, 258, '战斗暂停', 43).setOrigin(0.5),
+            button(this.scene, 525, first, '继续游戏', actions.resume, 230, height),
+            button(this.scene, 525, first + step, '设置', actions.settings, 230, height),
+            button(this.scene, 525, first + step * 2, '退出本局', actions.quit, 230, height),
+        ]).setDepth(10);
+        this.hud.add(this.overlay);
+    }
+
+    quitConfirmOverlay(confirm: () => void, cancel: () => void) {
+        this.hideOverlay();
+        const height = this.mobile ? 76 : 56;
+        const top = this.mobile ? 236 : 246;
+        this.overlay = this.scene.add.container(0, 0, [
+            this.scene.add.rectangle(640, 360, VIEW.width, VIEW.height, 0x0a151b, 0.8),
+            panel(this.scene, 470, top, 340, this.mobile ? 248 : 228),
+            heading(this.scene, 640, this.mobile ? 292 : 296, '退出本局？', 36).setOrigin(0.5),
+            label(this.scene, 640, this.mobile ? 340 : 344, '本局金币与遗物不会保留', 18, COLORS.muted).setOrigin(0.5),
+            button(this.scene, 494, this.mobile ? 376 : 380, '返回', cancel, 140, height),
+            button(this.scene, 646, this.mobile ? 376 : 380, '放弃本局', confirm, 140, height),
         ]).setDepth(10);
         this.hud.add(this.overlay);
     }
@@ -645,16 +788,16 @@ export class BattleView {
             id, ...RELICS[id], action: () => choose(id), buttonText: '选择', border: 0x657969,
         }));
         const options = goldOption ? [...cards, {
-            id: undefined, icon: '◇', label: `${goldOption.amount} 金币`, description: '存入本局钱包\n可在商店购买遗物',
+            id: undefined, label: `${goldOption.amount} 金币`, description: '存入本局钱包\n可在商店购买遗物',
             action: goldOption.choose, buttonText: '金币开局', border: 0xa98a61,
         }] : cards;
-        options.forEach(({ id, icon, label: title, description, action, buttonText, border }, index) => {
+        options.forEach(({ id, label: title, description, action, buttonText, border }, index) => {
             const width = 255;
             const x = 640 + (index - (options.length - 1) / 2) * 283;
             const card = panel(scene, x - width / 2, 258, width, 265, 0x243a3f, border);
             children.push(
                 card,
-                label(scene, x, 324, icon, 43, COLORS.gold).setOrigin(0.5),
+                id ? relicIcon(scene, x, 325, id, 74) : coinIcon(scene, x, 325, 64),
                 heading(scene, x, 371, title, 24).setOrigin(0.5),
                 label(scene, x, 417, description, 17, COLORS.muted).setOrigin(0.5).setAlign('center'),
                 button(scene, x - 74, 457, buttonText, action, 148),
@@ -716,7 +859,8 @@ export class BattleView {
         const children: Phaser.GameObjects.GameObject[] = [
             panel(scene, 408, 182, 464, 357, 0x243a3f, 0x8e795b),
             heading(scene, 640, 227, '获得奖励', 32).setOrigin(0.5),
-            label(scene, 640, 296, relic?.icon ?? '◇', 43, COLORS.gold).setOrigin(0.5),
+            reward.kind === 'relic' ? relicIcon(scene, 640, 306, reward.id, 72)
+                : coinIcon(scene, 640, 296, 70),
             heading(scene, 640, 354, title, 28).setOrigin(0.5),
             label(scene, 640, 405, relic?.description ?? '已存入本局金币余额', 17, COLORS.muted)
                 .setOrigin(0.5).setAlign('center'),
@@ -746,7 +890,7 @@ export class BattleView {
             label(scene, 640, 170, ENCOUNTER_ICONS[category], 30, COLORS.gold).setOrigin(0.5),
             heading(scene, 640, 210, title, 36).setOrigin(0.5),
             label(scene, 640, 252, description, 18, COLORS.muted).setOrigin(0.5),
-            label(scene, 640, 282, `金币 ${context.economy.gold}   ·   ${hpLine(context.player)}`, 17, COLORS.gold).setOrigin(0.5),
+            coinLabel(scene, 640, 282, `金币 ${context.economy.gold}   ·   ${hpLine(context.player)}`, 17),
         ];
         choices.forEach((choice, index) => {
             const y = 309 + index * 91;
@@ -768,26 +912,28 @@ export class BattleView {
             heading(scene, 640, 220, title, 36).setOrigin(0.5),
             label(scene, 640, 265, result.action, 19, COLORS.gold).setOrigin(0.5),
             label(scene, 640, 340, result.summary.join('\n'), 20).setOrigin(0.5).setAlign('center').setLineSpacing(10),
-            label(scene, 640, 439, `金币 ${context.economy.gold}   ·   ${hpLine(context.player)}`, 18, COLORS.gold).setOrigin(0.5),
+            coinLabel(scene, 640, 439, `金币 ${context.economy.gold}   ·   ${hpLine(context.player)}`, 18),
             button(scene, 525, 485, '开始下一波', proceed),
         ]);
     }
 
     shopOverlay(next: number, gold: number, offers: readonly (Readonly<ShopOffer> | null)[], canRefresh: boolean,
         supply: { player: Vital; claimed?: ShopSupply; hasUnownedRelic: boolean; choose: (kind: ShopSupply['kind']) => void },
-        buy: (index: number) => void, refresh: () => void, leave: () => void) {
+        buy: (index: number) => void, refresh: () => void, leave: () => void, tip?: string) {
         const scene = this.scene;
         const { player, claimed, hasUnownedRelic, choose } = supply;
         const children: Phaser.GameObjects.GameObject[] = [
             heading(scene, 640, 99, '整备商店', 44).setOrigin(0.5),
-            label(scene, 640, 145, `金币 ${gold}   ·   ${hpLine(player)}   ·   下一波为第 ${next} 波`, 20, COLORS.gold).setOrigin(0.5),
+            coinLabel(scene, 640, 145, `金币 ${gold}   ·   ${hpLine(player)}   ·   下一波为第 ${next} 波`, 20),
             panel(scene, 233, 167, 814, 68, 0x1b3036, 0x607871),
             label(scene, 255, 201, claimed ? '已领取补给' : '免费补给 · 二选一', 19, COLORS.mint).setOrigin(0, 0.5),
         ];
         if (claimed) {
             const receipt = claimed.kind === 'heal' ? `恢复 ${Number(claimed.amount.toFixed(1))} 生命`
                 : `获得遗物 · ${RELIC_FACTION_NAMES[RELIC_FACTIONS[claimed.id]]} · ${RELICS[claimed.id].label}`;
-            children.push(label(scene, 705, 201, receipt, 22, COLORS.mint).setOrigin(0.5));
+            const receiptText = label(scene, 705, 201, receipt, 22, COLORS.mint).setOrigin(0.5);
+            if (claimed.kind === 'relic') children.push(relicIcon(scene, 683 - receiptText.width / 2, 201, claimed.id, 36));
+            children.push(receiptText);
         } else {
             const canHeal = player.hp < player.maxHp;
             children.push(
@@ -804,21 +950,22 @@ export class BattleView {
             const canBuy = offer && !sold && gold >= offer.price;
             children.push(
                 panel(scene, x - 110, 244, 220, 275, sold ? 0x1b2e34 : 0x243a3f, sold ? 0x405354 : 0x657969),
-                label(scene, x, 295, sold ? '—' : relic?.icon ?? '—', 33, sold ? COLORS.muted : COLORS.gold).setOrigin(0.5),
+                offer && !sold ? relicIcon(scene, x, 299, offer.id, 60)
+                    : label(scene, x, 295, '—', 33, COLORS.muted).setOrigin(0.5),
                 heading(scene, x, 334, sold ? '已售罄' : relic?.label ?? '空栏位', 21).setOrigin(0.5),
                 label(scene, x, 385, sold ? '' : relic?.description ?? '暂无商品', 15, COLORS.muted)
                     .setOrigin(0.5).setAlign('center').setWordWrapWidth(192, true),
-                label(scene, x, 437, offer && !sold ? `${offer.price} 金币` : '', 17, COLORS.gold).setOrigin(0.5),
                 button(scene, x - 82, 452, sold ? '已购买' : !offer ? '无库存' : canBuy ? '购买' : '金币不足',
                     canBuy ? () => buy(index) : undefined, 164),
             );
-            if (offer && !sold) children.push(factionBadge(scene, x, 262, offer.id));
+            if (offer && !sold) children.push(factionBadge(scene, x, 262, offer.id),
+                coinLabel(scene, x, 437, `${offer.price}`, 17));
         });
         children.push(
             button(scene, 371, 555, `刷新 · ${REFRESH_COST} 金币`, canRefresh ? refresh : undefined, 250),
             button(scene, 659, 555, `离开并开始第 ${next} 波`, leave, 250),
-            label(scene, 640, 636, !canRefresh && gold >= REFRESH_COST ? '当前没有可刷新的库存' : '售罄栏位保留至离店',
-                16, COLORS.muted).setOrigin(0.5),
+            label(scene, 640, 636, tip ?? (!canRefresh && gold >= REFRESH_COST ? '当前没有可刷新的库存' : '售罄栏位保留至离店'),
+                tip ? 18 : 16, tip ? COLORS.gold : COLORS.muted).setOrigin(0.5),
         );
         this.showMenu(children);
     }

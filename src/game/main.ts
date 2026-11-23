@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { unlockAudio } from './audio';
 import { BattleScene } from './scenes/BattleScene';
 import { MainMenuScene, ResultScene } from './scenes/Screens';
 import { VIEW } from './config';
@@ -9,6 +10,14 @@ export default function startGame(parent: string) {
     const container = document.getElementById(parent);
     // The rotation class has to be on the DOM first: Phaser measures the parent box while booting.
     if (container) prepareRotation(container);
+    // Browsers keep audio suspended until the page has seen a gesture, so prime it on the first one.
+    const unlock = () => {
+        unlockAudio();
+        window.removeEventListener('pointerdown', unlock);
+        window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
     const game = new Phaser.Game({
         type: Phaser.AUTO,
         ...VIEW,
@@ -32,6 +41,8 @@ export default function startGame(parent: string) {
         game.events.once(Phaser.Core.Events.DESTROY, () => {
             cleanup();
             stopRotation();
+            window.removeEventListener('pointerdown', unlock);
+            window.removeEventListener('keydown', unlock);
         });
     }
     return game;

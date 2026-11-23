@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { playCue } from './audio.ts';
 import { RELIC_FACTIONS, RELIC_FACTION_NAMES, RELICS, type RelicFaction, type RelicId } from './config';
 
 export const COLORS = {
@@ -40,8 +41,10 @@ export function panel(
     return graphics;
 }
 
-export function button(scene: Phaser.Scene, x: number, y: number, text: string, action: (() => void) | undefined, width = 230) {
-    const height = 56;
+export function button(
+    scene: Phaser.Scene, x: number, y: number, text: string, action: (() => void) | undefined,
+    width = 230, height = 56,
+) {
     const surface = scene.add.graphics();
     const draw = (hover: boolean) => {
         surface.clear().fillStyle(action ? (hover ? 0xfbe0b0 : 0xf0c890) : 0x35484a)
@@ -57,7 +60,10 @@ export function button(scene: Phaser.Scene, x: number, y: number, text: string, 
     root.on('pointerover', () => draw(true));
     root.on('pointerout', () => draw(false));
     root.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-        if (pointer.button === 0) action();
+        if (pointer.button === 0) {
+            playCue('ui');
+            action();
+        }
     });
     return root;
 }
@@ -74,11 +80,39 @@ export function factionBadge(scene: Phaser.Scene, x: number, y: number, id: Reli
         .setBackgroundColor('#16292e').setPadding(8, 2, 8, 2).setOrigin(0.5);
 }
 
-export function relicRows(ids: Iterable<RelicId>, columns: number, empty: string) {
-    const names = [...ids].map(id => RELICS[id].label);
-    const rows: string[] = [];
-    for (let i = 0; i < names.length; i += columns) {
-        rows.push(names.slice(i, i + columns).join('　'));
+const relicTextureKey = (id: RelicId) => `relic-${id}`;
+const COIN_TEXTURE = 'currency-gold';
+
+export function loadCoinTexture(scene: Phaser.Scene) {
+    if (!scene.textures.exists(COIN_TEXTURE)) {
+        scene.load.image(COIN_TEXTURE, `${import.meta.env.BASE_URL}assets/ui/coin.png`);
     }
-    return rows.join('\n') || empty;
+}
+
+export function coinIcon(scene: Phaser.Scene, x: number, y: number, size: number) {
+    return scene.textures.exists(COIN_TEXTURE)
+        ? scene.add.image(x, y, COIN_TEXTURE).setDisplaySize(size, size)
+        : label(scene, x, y, '◇', Math.round(size * 0.65), COLORS.gold).setOrigin(0.5);
+}
+
+export function coinLabel(scene: Phaser.Scene, x: number, y: number, value: string, size: number, floating = false) {
+    const text = label(scene, (size + 6) / 2, 0, value, size, COLORS.gold).setOrigin(0.5);
+    if (floating) text.setFontStyle('bold').setStroke('#17272e', 4);
+    return scene.add.container(x, y, [coinIcon(scene, -(text.width + 6) / 2, 0, size + 2), text]);
+}
+
+export function loadRelicTextures(scene: Phaser.Scene) {
+    for (const id of Object.keys(RELIC_FACTIONS) as RelicId[]) {
+        const key = relicTextureKey(id);
+        if (!scene.textures.exists(key)) {
+            scene.load.image(key, `${import.meta.env.BASE_URL}assets/relics/${RELIC_FACTIONS[id]}/${id}.png`);
+        }
+    }
+}
+
+export function relicIcon(scene: Phaser.Scene, x: number, y: number, id: RelicId, size: number) {
+    const key = relicTextureKey(id);
+    return scene.textures.exists(key)
+        ? scene.add.image(x, y, key).setDisplaySize(size, size)
+        : label(scene, x, y, RELICS[id].icon, Math.round(size * 0.65), COLORS.gold).setOrigin(0.5);
 }
